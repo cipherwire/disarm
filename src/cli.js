@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
+import v8 from 'node:v8';
+import { spawnSync } from 'node:child_process';
 import { deobfuscate } from './index.js';
 
 function usage() {
@@ -48,6 +50,32 @@ const input = positional[0];
 if (!input) {
   usage();
   process.exit(1);
+}
+
+if (!fs.existsSync(input)) {
+  console.error(`error: input file not found: ${input}`);
+  process.exit(1);
+}
+
+// ---------------------------------------------------------------------------
+// Auto-scale V8 memory limit under the hood for large files (>= 2.5 MB)
+// ---------------------------------------------------------------------------
+const stat = fs.statSync(input);
+const sizeMB = stat.size / (1024 * 1024);
+const heapLimitBytes = v8.getHeapStatistics().heap_size_limit;
+const heapLimitMB = Math.round(heapLimitBytes / (1024 * 1024));
+
+if (sizeMB >= 2.5 && heapLimitMB < 3800 && process.env.__DISARM_AUTOSCALED !== '1') {
+  console.log(`[disarm] large input detected (${sizeMB.toFixed(1)} MB): auto-scaling V8 memory limit to 4096 MB...`);
+  const child = spawnSync(
+    process.execPath,
+    ['--max-old-space-size=4096', ...process.argv.slice(1)],
+    {
+      stdio: 'inherit',
+      env: { ...process.env, __DISARM_AUTOSCALED: '1' },
+    },
+  );
+  process.exit(child.status ?? 0);
 }
 
 const source = fs.readFileSync(input, 'utf8');

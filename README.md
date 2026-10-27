@@ -356,6 +356,9 @@ Options:
   -h, --help      Show usage details
 ```
 
+### Automatic Large Bundle Scaling
+When analyzing large enterprise production bundles (>= 2.5 MB), `disarm` inspects the input file size and current V8 heap limit. If the environment is constrained (such as standard CI or Docker containers defaulting to ~2 GB), `disarm` automatically scales its V8 old space heap limit to 4096 MB under the hood without requiring manual Node CLI flags.
+
 ### Audit Report Output
 Each run outputs a structured audit log detailing changes made across every pass:
 
