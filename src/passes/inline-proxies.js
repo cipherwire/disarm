@@ -59,6 +59,32 @@ function isValidProxyExpr(expr) {
 }
 
 /**
+ * Check if an expression mutates any of the given parameter names.
+ */
+function mutatesParams(expr, paramNames) {
+  const set = new Set(paramNames);
+  let mutates = false;
+  function walk(node) {
+    if (!node || typeof node !== 'object' || mutates) return;
+    if (t.isAssignmentExpression(node) && t.isIdentifier(node.left) && set.has(node.left.name)) {
+      mutates = true;
+      return;
+    }
+    if (t.isUpdateExpression(node) && t.isIdentifier(node.argument) && set.has(node.argument.name)) {
+      mutates = true;
+      return;
+    }
+    for (const key of Object.keys(node)) {
+      if (key === 'loc' || key === 'leadingComments' || key === 'trailingComments') continue;
+      if (Array.isArray(node[key])) node[key].forEach(walk);
+      else if (typeof node[key] === 'object') walk(node[key]);
+    }
+  }
+  walk(expr);
+  return mutates;
+}
+
+/**
  * Scope-safe parameter substitution that avoids corrupting non-computed member properties,
  * object property keys, and inner function parameters/declarations.
  */
@@ -79,6 +105,14 @@ function substituteParams(astNode, paramMap) {
     // Do NOT replace function or parameter declaration identifiers
     if (parent && (t.isFunctionDeclaration(parent) || t.isFunctionExpression(parent) || t.isArrowFunctionExpression(parent))) {
       if (parent.params.includes(node) || parent.id === node) return node;
+    }
+
+    // Do NOT replace assignment targets or update targets with non-LVal expressions
+    if (parent && t.isAssignmentExpression(parent) && parent.left === node) {
+      return node;
+    }
+    if (parent && t.isUpdateExpression(parent) && parent.argument === node) {
+      return node;
     }
 
     if (t.isIdentifier(node) && paramMap.has(node.name)) {
@@ -144,6 +178,8 @@ export const inlineProxies = {
         if (binding.referencePaths.length === 0) return;
 
         const paramNames = params.filter((p) => t.isIdentifier(p)).map((p) => p.name);
+        if (mutatesParams(expr, paramNames)) return;
+
         const paramSet = new Set(paramNames);
         const usedParamSet = new Set();
         function findUsedParams(node) {
@@ -210,6 +246,8 @@ export const inlineProxies = {
           if (!expr || !isValidProxyExpr(expr)) return;
 
           const paramNames = init.params.filter((p) => t.isIdentifier(p)).map((p) => p.name);
+          if (mutatesParams(expr, paramNames)) return;
+
           const paramSet = new Set(paramNames);
           const usedParamSet = new Set();
           function findUsedParams(node) {
@@ -283,9 +321,11 @@ export const inlineProxies = {
             } else if (t.isFunctionExpression(val) || t.isArrowFunctionExpression(val)) {
               const expr = getReturnExpr(val);
               if (expr && isValidProxyExpr(expr)) {
+                const paramNames = val.params.filter((p) => t.isIdentifier(p)).map((p) => p.name);
+                if (mutatesParams(expr, paramNames)) return;
                 propMap.set(key, {
                   isLiteral: false,
-                  paramNames: val.params.filter((p) => t.isIdentifier(p)).map((p) => p.name),
+                  paramNames,
                   expr,
                 });
               } else {
