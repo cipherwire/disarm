@@ -10,7 +10,7 @@ De-flatten control flow, inline operation proxies, harvest isolated string banks
   <a href="https://github.com/cipherwire/disarm/actions"><img src="https://img.shields.io/github/actions/workflow/status/cipherwire/disarm/ci.yml?branch=main&label=CI&style=flat-square" alt="CI" /></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D18-blue?style=flat-square" alt="Node.js" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License" /></a>
-  <a href="https://github.com/cipherwire/disarm"><img src="https://img.shields.io/badge/pipeline-25%20passes-purple?style=flat-square" alt="Passes" /></a>
+  <a href="https://github.com/cipherwire/disarm"><img src="https://img.shields.io/badge/pipeline-30%20passes-purple?style=flat-square" alt="Passes" /></a>
 </p>
 
 </div>
@@ -35,6 +35,9 @@ De-flatten control flow, inline operation proxies, harvest isolated string banks
   - [7. Logical Guard Unwrapping](#7-logical-guard-unwrapping)
   - [8. Multi-Hop Constant & Alias Propagation](#8-multi-hop-constant--alias-propagation)
   - [9. Literal & Character Normalization](#9-literal--character-normalization)
+  - [10. Statement Ternary Unrolling](#10-statement-ternary-unrolling)
+  - [11. Yoda Condition Normalization](#11-yoda-condition-normalization)
+  - [12. Compound Declaration Splitting](#12-compound-declaration-splitting)
 - [CLI Reference](#cli-reference)
 - [Verification & CI](#verification--ci)
 - [License](#license)
@@ -49,6 +52,8 @@ Enterprise anti-bot challenge scripts (Akamai Bot Manager, Cloudflare Turnstile,
 - **Proxy wrapper functions and object dictionaries** that disguise function calls, property lookups, and basic arithmetic.
 - **Encrypted string banks** protected by dynamic index rotators, XOR masks, and self-modifying decoders.
 - **Short-circuit guard chains and comma expressions** that compress procedural algorithms into dense one-liners.
+- **Statement-level nested ternaries** that obscure procedural branches and execution flow.
+- **Inverted Yoda conditions** that prevent pattern matching and signature detection.
 - **Multi-hop variable alias chains** that scatter endpoint strings and identifiers across decoy declarations.
 - **Anti-analysis tripwires** (debugger statements, infinite loops, and prototype tamper checks) that punish inspection.
 
@@ -83,37 +88,42 @@ Enterprise anti-bot challenge scripts (Akamai Bot Manager, Cloudflare Turnstile,
  │  Stage 1: Fingerprint & Sequence Pre-processing                         │
  │  ├── 01. detect-techniques      Fingerprint obfuscation techniques      │
  │  ├── 02. split-sequences        Unwrap comma operators into statements  │
- │  ├── 03. strip-debug-traps      Purge debugger statements & trap ctors  │
- │  └── 04. strip-self-defending   Neutralize single-call anti-tamper      │
+ │  ├── 03. split-declarations     Split compound variable declarations    │
+ │  ├── 04. strip-debug-traps      Purge debugger statements & trap ctors  │
+ │  └── 05. strip-self-defending   Neutralize single-call anti-tamper      │
  │                                                                         │
  │  Stage 2: Structural Unravelling                                        │
- │  ├── 05. inline-proxies         Inline wrapper functions & dictionaries │
- │  ├── 06. unflatten-control-flow Reconstruct linear code from switches   │
- │  └── 07. unwrap-logical-guards  Convert && and || chains to if-blocks   │
+ │  ├── 06. inline-proxies         Inline wrapper functions & dictionaries │
+ │  ├── 07. unflatten-control-flow Reconstruct linear code from switches   │
+ │  ├── 08. unwrap-logical-guards  Convert && and || chains to if-blocks   │
+ │  └── 09. unwrap-ternaries       Convert statement ternaries to if/else  │
  │                                                                         │
  │  Stage 3: String Decryption & Constant Evaluation                       │
- │  ├── 08. decode-string-banks    Sandbox-harvest & inline string banks   │
- │  ├── 09. simplify-tricks        Fold coercion tricks (![], !0, void 0)  │
- │  ├── 10. fold-number-tostring   Fold Number(n).toString(radix)          │
- │  ├── 11. fold-unescape          Fold unescape, atob, btoa, URI codecs   │
- │  ├── 12. fold-constants         Pure binary/unary/logical fixpoint loop │
- │  └── 13. propagate-constants    Propagate constant values & aliases     │
+ │  ├── 10. decode-string-banks    Sandbox-harvest & inline string banks   │
+ │  ├── 11. simplify-tricks        Fold coercion tricks (![], !0, void 0)  │
+ │  ├── 12. normalize-conditions   Flip inverted Yoda comparisons          │
+ │  ├── 13. fold-number-tostring   Fold Number(n).toString(radix)          │
+ │  ├── 14. fold-unescape          Fold unescape, atob, btoa, URI codecs   │
+ │  ├── 15. fold-constants         Pure binary/unary/logical fixpoint loop │
+ │  └── 16. propagate-constants    Propagate constant values & aliases     │
  │                                                                         │
  │  Stage 4: Secondary Fixpoint Pass                                       │
- │  ├── 14. strip-debug-traps      Purge traps exposed by folded strings   │
- │  ├── 15. strip-self-defending   Re-evaluate exposed tamper controllers  │
- │  ├── 16. inline-proxies         Inline remaining secondary proxies      │
- │  ├── 17. unflatten-control-flow Unflatten remaining nested dispatchers  │
- │  ├── 18. unwrap-logical-guards  Unwrap newly exposed logical guards     │
- │  ├── 19. fold-constants         Fold newly exposed constant expressions │
- │  └── 20. propagate-constants    Collapse secondary alias references     │
+ │  ├── 17. strip-debug-traps      Purge traps exposed by folded strings   │
+ │  ├── 18. strip-self-defending   Re-evaluate exposed tamper controllers  │
+ │  ├── 19. inline-proxies         Inline remaining secondary proxies      │
+ │  ├── 20. unflatten-control-flow Unflatten remaining nested dispatchers  │
+ │  ├── 21. unwrap-logical-guards  Unwrap newly exposed logical guards     │
+ │  ├── 22. unwrap-ternaries       Unwrap newly exposed statement ternaries│
+ │  ├── 23. fold-constants         Fold newly exposed constant expressions │
+ │  └── 24. propagate-constants    Collapse secondary alias references     │
  │                                                                         │
  │  Stage 5: Normalization & Final Polish                                  │
- │  ├── 21. normalize-literals     Convert 0x1f4 -> 500 and unescape chars │
- │  ├── 22. normalize-member       Rewrite a["prop"] -> a.prop             │
- │  ├── 23. remove-dead-code       Drop literal branches & unreachable code│
- │  ├── 24. rename-identifiers     Scope-aware renaming of junk tokens     │
- │  └── 25. cleanup                Prune empty statements & pure literals  │
+ │  ├── 25. normalize-conditions   Final sweep on inverted comparisons     │
+ │  ├── 26. normalize-literals     Convert 0x1f4 -> 500 and unescape chars │
+ │  ├── 27. normalize-member       Rewrite a["prop"] -> a.prop             │
+ │  ├── 28. remove-dead-code       Drop literal branches & unreachable code│
+ │  ├── 29. rename-identifiers     Scope-aware renaming of junk tokens     │
+ │  └── 30. cleanup                Prune empty statements & pure literals  │
  │                                                                         │
  └────────────────────────────────────┬────────────────────────────────────┘
                                       │
@@ -139,7 +149,7 @@ npm install
 npm test
 
 # Deobfuscate a target script
-node src/cli.js challenge.js -o challenge.clean.js
+node src/cli.js challenge.js -o output/challenge.clean.js
 ```
 
 ### Programmatic API
@@ -290,6 +300,47 @@ var zero = 0;
 var text = "hello";
 ```
 
+### 10. Statement Ternary Unrolling
+Converts statement-level ternary expressions into structured `if/else` and `else if` blocks:
+
+```javascript
+// Before
+isReady ? (initialize(), start()) : (retryCount++, wait());
+
+// After disarm
+if (isReady) {
+  initialize();
+  start();
+} else {
+  retryCount++;
+  wait();
+}
+```
+
+### 11. Yoda Condition Normalization
+Inverts backwards comparisons to place expressions and variables on the left and literals on the right:
+
+```javascript
+// Before
+if ("hidden" === document.visibilityState && 402 === res.status && 0 < val)
+
+// After disarm
+if (document.visibilityState === "hidden" && res.status === 402 && val > 0)
+```
+
+### 12. Compound Declaration Splitting
+Breaks compound multi-variable declarations into clean standalone statements:
+
+```javascript
+// Before
+var a = init(), b = configure(), c = start();
+
+// After disarm
+var a = init();
+var b = configure();
+var c = start();
+```
+
 ---
 
 ## CLI Reference
@@ -316,9 +367,12 @@ Each run outputs a structured audit log detailing changes made across every pass
   "passes": [
     { "name": "detect-techniques", "changes": 0, "notes": ["techniques: switch-dispatch-loop×1"] },
     { "name": "split-sequences", "changes": 12, "notes": ["unwrapped 12 comma sequence expression(s)"] },
+    { "name": "split-declarations", "changes": 5, "notes": ["split 5 compound variable declaration(s)"] },
     { "name": "inline-proxies", "changes": 27, "notes": ["inlined 27 proxy function/object call(s)"] },
     { "name": "unflatten-control-flow", "changes": 1, "notes": ["unflattened 1 control-flow dispatch loop(s)"] },
     { "name": "unwrap-logical-guards", "changes": 8, "notes": ["unwrapped 8 logical guard expression(s) into if-statements"] },
+    { "name": "unwrap-ternaries", "changes": 4, "notes": ["unwrapped 4 statement ternary expression(s)"] },
+    { "name": "normalize-conditions", "changes": 6, "notes": ["normalized 6 Yoda condition(s)"] },
     { "name": "decode-string-banks", "changes": 17, "notes": ["found 1 decoder function(s)"] },
     { "name": "fold-constants", "changes": 51, "notes": [] },
     { "name": "propagate-constants", "changes": 14, "notes": ["propagated 14 constant literal(s) and alias(es)"] },
@@ -356,6 +410,9 @@ Verification suite checks:
 10. Constant literal and multi-hop alias chain propagation
 11. Literal normalization (hexadecimal to decimal, escaped chars to strings)
 12. End-to-end modern challenge reconstruction combining all passes
+13. Statement ternary unrolling into structured if-else blocks
+14. Yoda condition normalization for equality and inequality operators
+15. Compound variable declaration splitting
 
 ---
 

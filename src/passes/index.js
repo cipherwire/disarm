@@ -1,12 +1,15 @@
 import { detectTechniques } from './detect-techniques.js';
 import { splitSequences } from './split-sequences.js';
+import { splitDeclarations } from './split-declarations.js';
 import { stripDebugTraps } from './strip-debug-traps.js';
 import { stripSelfDefending } from './strip-self-defending.js';
 import { inlineProxies } from './inline-proxies.js';
 import { unflattenControlFlow } from './unflatten-control-flow.js';
 import { unwrapLogicalGuards } from './unwrap-logical-guards.js';
+import { unwrapTernaries } from './unwrap-ternaries.js';
 import { decodeStringBanks } from './decode-string-banks.js';
 import { simplifyTricks } from './simplify-tricks.js';
+import { normalizeConditions } from './normalize-conditions.js';
 import { foldNumberToString } from './fold-number-tostring.js';
 import { foldUnescape } from './fold-unescape.js';
 import { foldConstants } from './fold-constants.js';
@@ -25,13 +28,16 @@ import { cleanup } from './cleanup.js';
 export const defaultPasses = [
   detectTechniques,
   splitSequences,
+  splitDeclarations,
   stripDebugTraps,
   stripSelfDefending,
   inlineProxies,
   unflattenControlFlow,
   unwrapLogicalGuards,
+  unwrapTernaries,
   decodeStringBanks,
   simplifyTricks,
+  normalizeConditions,
   foldNumberToString,
   foldUnescape,
   foldConstants,
@@ -41,8 +47,10 @@ export const defaultPasses = [
   inlineProxies,
   unflattenControlFlow,
   unwrapLogicalGuards,
+  unwrapTernaries,
   foldConstants,
   propagateConstants,
+  normalizeConditions,
   normalizeLiterals,
   normalizeMember,
   removeDeadCode,
@@ -53,13 +61,16 @@ export const defaultPasses = [
 export {
   detectTechniques,
   splitSequences,
+  splitDeclarations,
   stripDebugTraps,
   stripSelfDefending,
   inlineProxies,
   unflattenControlFlow,
   unwrapLogicalGuards,
+  unwrapTernaries,
   decodeStringBanks,
   simplifyTricks,
+  normalizeConditions,
   foldNumberToString,
   foldUnescape,
   foldConstants,

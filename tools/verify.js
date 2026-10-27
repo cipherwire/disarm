@@ -197,4 +197,52 @@ console.log('Running disarm core verification suite...\n');
   console.log('  ok: end-to-end modern challenge reconstruction');
 }
 
-console.log('\nAll 12 core verification checks passed successfully.');
+// 13. Statement ternary unrolling
+{
+  const input = [
+    'function handle(flag) {',
+    '  flag ? (init(), start()) : (retry(), wait());',
+    '}',
+  ].join('\n');
+  const { code } = deobfuscate(input);
+  assert.ok(code.includes('if (flag) {'), 'Ternary must convert to if statement');
+  assert.ok(code.includes('init();'), 'Consequent must be statements inside block');
+  assert.ok(code.includes('start();'), 'Consequent sequence must unroll into block');
+  assert.ok(code.includes('} else {'), 'Ternary must have else branch');
+  assert.ok(code.includes('retry();'), 'Alternate must be statements inside block');
+  console.log('  ok: statement ternary unrolling');
+}
+
+// 14. Yoda condition normalization
+{
+  const input = [
+    'function check(status, doc, val) {',
+    '  if ("hidden" === doc.visibilityState && 402 === status && 0 < val) {',
+    '    return null !== val;',
+    '  }',
+    '}',
+  ].join('\n');
+  const { code } = deobfuscate(input);
+  assert.ok(code.includes('doc.visibilityState === "hidden"'), 'String literal must flip to right');
+  assert.ok(code.includes('status === 402'), 'Number literal must flip to right');
+  assert.ok(code.includes('val > 0'), 'Inequality literal must flip and invert operator');
+  assert.ok(code.includes('val !== null'), 'Null literal must flip to right');
+  console.log('  ok: yoda condition normalization');
+}
+
+// 15. Compound variable declaration splitting
+{
+  const input = [
+    'function setup() {',
+    '  var a = init(), b = configure(), c = start();',
+    '  return a;',
+    '}',
+  ].join('\n');
+  const { code } = deobfuscate(input);
+  assert.ok(code.includes('var a = init();'), 'First declarator must be standalone statement');
+  assert.ok(code.includes('var b = configure();'), 'Second declarator must be standalone statement');
+  assert.ok(code.includes('var c = start();'), 'Third declarator must be standalone statement');
+  console.log('  ok: compound variable declaration splitting');
+}
+
+console.log('\nAll 15 core verification checks passed successfully.');
