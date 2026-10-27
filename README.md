@@ -425,7 +425,7 @@ Each run outputs a structured audit log detailing changes made across every pass
 
 ## Verification & CI
 
-Automated GitHub Actions workflows run across Linux, macOS, and Windows on Node.js 18, 20, and 22:
+Automated GitHub Actions workflows run across Linux and Windows on Node.js 18, 20, and 22:
 
 ```bash
 # Execute the complete verification test suite
