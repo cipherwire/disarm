@@ -307,6 +307,29 @@ export const inlineProxies = {
 
         // Case 2: Object dictionary proxy
         if (t.isObjectExpression(init)) {
+          const refs = [...binding.referencePaths];
+
+          // Check if the object or its properties are mutated anywhere
+          let isMutated = false;
+          for (const refPath of refs) {
+            const p = refPath.parentPath;
+            if (!p) continue;
+            if (p.isMemberExpression() && p.node.object === refPath.node) {
+              if (p.parentPath?.isAssignmentExpression() && p.parentPath.node.left === p.node) {
+                isMutated = true;
+                break;
+              }
+              if (p.parentPath?.isUpdateExpression() && p.parentPath.node.argument === p.node) {
+                isMutated = true;
+                break;
+              }
+            } else if (p.isAssignmentExpression() && p.node.left === refPath.node) {
+              isMutated = true;
+              break;
+            }
+          }
+          if (isMutated) return;
+
           const propMap = new Map();
           for (const prop of init.properties) {
             if (!t.isObjectProperty(prop)) return;
@@ -338,7 +361,6 @@ export const inlineProxies = {
 
           if (propMap.size === 0) return;
 
-          const refs = [...binding.referencePaths];
           let inlinedForThisProxy = 0;
           for (const refPath of refs) {
             const parentPath = refPath.parentPath;
@@ -358,6 +380,12 @@ export const inlineProxies = {
 
             if (entry.isLiteral) {
               if (parentPath.parentPath?.isCallExpression() && parentPath.parentPath.node.callee === parentPath.node) {
+                continue;
+              }
+              if (parentPath.parentPath?.isAssignmentExpression() && parentPath.parentPath.node.left === parentPath.node) {
+                continue;
+              }
+              if (parentPath.parentPath?.isUpdateExpression()) {
                 continue;
               }
               parentPath.replaceWith(t.cloneNode(entry.node, true));
