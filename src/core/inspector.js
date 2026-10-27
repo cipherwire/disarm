@@ -1,6 +1,7 @@
 import traverseModule from '@babel/traverse';
 import * as t from '@babel/types';
 import { parse } from './parse.js';
+import { colors } from '../utils/colors.js';
 
 const traverse = traverseModule.default ?? traverseModule;
 
@@ -152,7 +153,7 @@ export function inspectTelemetry(target) {
  */
 export function formatInspectionReport(result) {
   const lines = [];
-  lines.push('=== Fingerprint & Telemetry Profile ===\n');
+  lines.push(colors.bold(colors.brightCyan('=== Fingerprint & Telemetry Profile ===\n')));
 
   const categories = [
     ['Canvas Fingerprinting', result.fingerprint.canvas],
@@ -166,19 +167,19 @@ export function formatInspectionReport(result) {
   for (const [title, items] of categories) {
     if (items.length > 0) {
       const names = items.map((i) => i.name).join(', ');
-      lines.push(`  [x] ${title.padEnd(28)} (${names})`);
+      lines.push(`  ${colors.brightRed(colors.bold('[!]'))} ${colors.bold(title.padEnd(28))} ${colors.yellow(`(${names})`)}`);
     } else {
-      lines.push(`  [ ] ${title.padEnd(28)} (not detected)`);
+      lines.push(`  ${colors.gray('[ ]')} ${colors.gray(title.padEnd(28))} ${colors.gray('(not detected)')}`);
     }
   }
 
-  lines.push('\n=== Discovered Endpoints & Paths ===\n');
+  lines.push(colors.bold(colors.brightCyan('\n=== Discovered Endpoints & Paths ===\n')));
   if (result.endpoints.length > 0) {
     for (const ep of result.endpoints) {
-      lines.push(`  -> ${ep}`);
+      lines.push(`  ${colors.green('->')} ${colors.brightGreen(ep)}`);
     }
   } else {
-    lines.push('  (no distinct endpoints identified)');
+    lines.push(colors.gray('  (no distinct endpoints identified)'));
   }
 
   return lines.join('\n');

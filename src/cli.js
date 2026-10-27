@@ -4,6 +4,7 @@ import path from 'node:path';
 import v8 from 'node:v8';
 import { spawnSync } from 'node:child_process';
 import { deobfuscate, inspectTelemetry, formatInspectionReport } from './index.js';
+import { colors } from './utils/colors.js';
 
 function usage() {
   console.log(`disarm: turn hostile JavaScript into readable source
@@ -129,18 +130,26 @@ fs.mkdirSync(path.dirname(reportPath), { recursive: true });
 fs.writeFileSync(output, code, 'utf8');
 fs.writeFileSync(reportPath, JSON.stringify(report.toJSON(), null, 2), 'utf8');
 
-console.log(`input     ${input}`);
-console.log(`output    ${output}`);
-console.log(`report    ${reportPath}`);
-console.log(`changes   ${report.totalChanges()} across ${report.passes.length} passes`);
+console.log(`${colors.dim('input    ')} ${colors.white(input)}`);
+console.log(`${colors.dim('output   ')} ${colors.green(output)}`);
+console.log(`${colors.dim('report   ')} ${colors.cyan(reportPath)}`);
+console.log(`${colors.dim('changes  ')} ${colors.bold(colors.brightGreen(report.totalChanges()))} across ${report.passes.length} passes`);
+
 if (report.telemetry) {
   const t = report.telemetry;
-  console.log(`metrics   complexity: ${t.initial.cyclomatic} -> ${t.final.cyclomatic} (-${t.cyclomaticDrop}%) | AST nodes: ${t.initial.nodeCount} -> ${t.final.nodeCount} (-${t.nodeReduction}%) | score: ${t.readabilityScore}/100`);
+  const scoreColor = t.readabilityScore >= 70 ? colors.brightGreen : (t.readabilityScore >= 45 ? colors.brightYellow : colors.brightRed);
+  console.log(`${colors.dim('metrics  ')} complexity: ${colors.yellow(t.initial.cyclomatic)} -> ${colors.green(t.final.cyclomatic)} (${colors.green(`-${t.cyclomaticDrop}%`)}) | AST nodes: ${colors.yellow(t.initial.nodeCount)} -> ${colors.green(t.final.nodeCount)} | score: ${scoreColor(colors.bold(`${t.readabilityScore}/100`))}`);
 }
+
 for (const pass of report.passes) {
-  if (pass.changes > 0) console.log(`  ${pass.name.padEnd(24)} ${pass.changes}`);
+  if (pass.changes > 0) {
+    console.log(`  ${colors.dim('->')} ${colors.cyan(pass.name.padEnd(24))} ${colors.bold(colors.brightYellow(pass.changes))}`);
+  }
 }
-for (const warning of report.warnings) console.log(`warning   ${warning}`);
+
+for (const warning of report.warnings) {
+  console.log(`${colors.brightRed('warning  ')} ${colors.yellow(warning)}`);
+}
 
 if (showInspect && report.meta.inspection) {
   console.log('\n' + formatInspectionReport(report.meta.inspection));
