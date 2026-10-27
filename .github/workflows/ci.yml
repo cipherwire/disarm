@@ -6,10 +6,15 @@ on:
   pull_request:
     branches: [main, master]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: Node.js ${{ matrix.node-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
@@ -30,5 +35,11 @@ jobs:
       - name: Verify CLI Help
         run: node src/cli.js -h
 
+      - name: Verify CLI Telemetry Inspector
+        run: node src/cli.js inspect tools/verify.js
+
       - name: Run Core Verification Suite
         run: node tools/verify.js
+
+      - name: Run Differential Semantic Oracle
+        run: node tools/oracle.js
