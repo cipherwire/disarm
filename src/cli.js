@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
+import path from 'node:path';
 import { deobfuscate } from './index.js';
 
 function usage() {
@@ -9,8 +10,8 @@ Usage:
   disarm <input.js> [-o output.js] [--report report.json]
 
 Options:
-  -o, --output    Write cleaned JavaScript here (default: <input>.clean.js)
-  --report        Write the JSON pass report here (default: <output>.report.json)
+  -o, --output    Write cleaned JavaScript here (default: output/<basename>.clean.js)
+  --report        Write the JSON pass report here (default: output/<basename>.report.json)
   --no-sandbox    Disable the sandboxed string-bank harvester
   -h, --help      Show this help
 `);
@@ -52,8 +53,14 @@ if (!input) {
 const source = fs.readFileSync(input, 'utf8');
 const { code, report } = deobfuscate(source, { sandbox });
 
-output ??= input.replace(/\.js$/i, '') + '.clean.js';
-reportPath ??= output.replace(/\.js$/i, '') + '.report.json';
+const baseName = path.basename(input).replace(/\.js$/i, '');
+const defaultOutputDir = 'output';
+
+output ??= path.join(defaultOutputDir, `${baseName}.clean.js`);
+reportPath ??= path.join(defaultOutputDir, `${baseName}.report.json`);
+
+fs.mkdirSync(path.dirname(output), { recursive: true });
+fs.mkdirSync(path.dirname(reportPath), { recursive: true });
 
 fs.writeFileSync(output, code, 'utf8');
 fs.writeFileSync(reportPath, JSON.stringify(report.toJSON(), null, 2), 'utf8');

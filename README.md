@@ -299,8 +299,8 @@ Usage:
   disarm <input.js> [-o output.js] [--report report.json] [--no-sandbox]
 
 Options:
-  -o, --output    Write cleaned JavaScript here (default: <input>.clean.js)
-  --report        Write the JSON audit report here (default: <output>.report.json)
+  -o, --output    Write cleaned JavaScript here (default: output/<basename>.clean.js)
+  --report        Write the JSON audit report here (default: output/<basename>.report.json)
   --no-sandbox    Disable the sandboxed string-bank harvester
   -h, --help      Show usage details
 ```
