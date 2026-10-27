@@ -8,7 +8,12 @@ export class Report {
     this.passes = [];
     this.warnings = [];
     this.meta = {};
+    this.telemetry = null;
     this._current = null;
+  }
+
+  setTelemetry(telemetry) {
+    this.telemetry = telemetry;
   }
 
   startPass(name, description = '') {
@@ -41,6 +46,7 @@ export class Report {
       tool: 'disarm',
       generatedAt: new Date().toISOString(),
       totalChanges: this.totalChanges(),
+      telemetry: this.telemetry ?? null,
       passes: this.passes,
       warnings: this.warnings,
       meta: this.meta,

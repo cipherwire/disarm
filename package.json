@@ -21,7 +21,9 @@
     "disarm": "src/cli.js"
   },
   "scripts": {
-    "test": "node tools/verify.js",
+    "test": "node tools/verify.js && node tools/oracle.js",
+    "test:verify": "node tools/verify.js",
+    "test:oracle": "node tools/oracle.js",
     "disarm": "node src/cli.js"
   },
   "engines": {

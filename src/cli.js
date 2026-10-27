@@ -97,6 +97,10 @@ console.log(`input     ${input}`);
 console.log(`output    ${output}`);
 console.log(`report    ${reportPath}`);
 console.log(`changes   ${report.totalChanges()} across ${report.passes.length} passes`);
+if (report.telemetry) {
+  const t = report.telemetry;
+  console.log(`metrics   complexity: ${t.initial.cyclomatic} -> ${t.final.cyclomatic} (-${t.cyclomaticDrop}%) | AST nodes: ${t.initial.nodeCount} -> ${t.final.nodeCount} (-${t.nodeReduction}%) | score: ${t.readabilityScore}/100`);
+}
 for (const pass of report.passes) {
   if (pass.changes > 0) console.log(`  ${pass.name.padEnd(24)} ${pass.changes}`);
 }

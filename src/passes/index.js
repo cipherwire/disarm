@@ -1,6 +1,7 @@
 import { detectTechniques } from './detect-techniques.js';
 import { splitSequences } from './split-sequences.js';
 import { splitDeclarations } from './split-declarations.js';
+import { fuseLiterals } from './fuse-literals.js';
 import { stripDebugTraps } from './strip-debug-traps.js';
 import { stripSelfDefending } from './strip-self-defending.js';
 import { inlineProxies } from './inline-proxies.js';
@@ -29,6 +30,7 @@ export const defaultPasses = [
   detectTechniques,
   splitSequences,
   splitDeclarations,
+  fuseLiterals,
   stripDebugTraps,
   stripSelfDefending,
   inlineProxies,
@@ -48,6 +50,7 @@ export const defaultPasses = [
   unflattenControlFlow,
   unwrapLogicalGuards,
   unwrapTernaries,
+  fuseLiterals,
   foldConstants,
   propagateConstants,
   normalizeConditions,
@@ -62,6 +65,7 @@ export {
   detectTechniques,
   splitSequences,
   splitDeclarations,
+  fuseLiterals,
   stripDebugTraps,
   stripSelfDefending,
   inlineProxies,

@@ -10,7 +10,7 @@ De-flatten control flow, inline operation proxies, harvest isolated string banks
   <a href="https://github.com/cipherwire/disarm/actions"><img src="https://img.shields.io/github/actions/workflow/status/cipherwire/disarm/ci.yml?branch=main&label=CI&style=flat-square" alt="CI" /></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D18-blue?style=flat-square" alt="Node.js" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License" /></a>
-  <a href="https://github.com/cipherwire/disarm"><img src="https://img.shields.io/badge/pipeline-30%20passes-purple?style=flat-square" alt="Passes" /></a>
+  <a href="https://github.com/cipherwire/disarm"><img src="https://img.shields.io/badge/pipeline-32%20passes-purple?style=flat-square" alt="Passes" /></a>
 </p>
 
 </div>
@@ -38,6 +38,9 @@ De-flatten control flow, inline operation proxies, harvest isolated string banks
   - [10. Statement Ternary Unrolling](#10-statement-ternary-unrolling)
   - [11. Yoda Condition Normalization](#11-yoda-condition-normalization)
   - [12. Compound Declaration Splitting](#12-compound-declaration-splitting)
+  - [13. Split String & Arithmetic Tree Fusion](#13-split-string--arithmetic-tree-fusion)
+  - [14. AST Complexity Telemetry & Readability Scoring](#14-ast-complexity-telemetry--readability-scoring)
+  - [15. Semantic Differential Oracle](#15-semantic-differential-oracle)
 - [CLI Reference](#cli-reference)
 - [Verification & CI](#verification--ci)
 - [License](#license)
@@ -89,41 +92,43 @@ Enterprise anti-bot challenge scripts (Akamai Bot Manager, Cloudflare Turnstile,
  │  ├── 01. detect-techniques      Fingerprint obfuscation techniques      │
  │  ├── 02. split-sequences        Unwrap comma operators into statements  │
  │  ├── 03. split-declarations     Split compound variable declarations    │
- │  ├── 04. strip-debug-traps      Purge debugger statements & trap ctors  │
- │  └── 05. strip-self-defending   Neutralize single-call anti-tamper      │
+ │  ├── 04. fuse-literals          Fuse split strings & arithmetic trees   │
+ │  ├── 05. strip-debug-traps      Purge debugger statements & trap ctors  │
+ │  └── 06. strip-self-defending   Neutralize single-call anti-tamper      │
  │                                                                         │
  │  Stage 2: Structural Unravelling                                        │
- │  ├── 06. inline-proxies         Inline wrapper functions & dictionaries │
- │  ├── 07. unflatten-control-flow Reconstruct linear code from switches   │
- │  ├── 08. unwrap-logical-guards  Convert && and || chains to if-blocks   │
- │  └── 09. unwrap-ternaries       Convert statement ternaries to if/else  │
+ │  ├── 07. inline-proxies         Inline wrapper functions & dictionaries │
+ │  ├── 08. unflatten-control-flow Reconstruct linear code from switches   │
+ │  ├── 09. unwrap-logical-guards  Convert && and || chains to if-blocks   │
+ │  └── 10. unwrap-ternaries       Convert statement ternaries to if/else  │
  │                                                                         │
  │  Stage 3: String Decryption & Constant Evaluation                       │
- │  ├── 10. decode-string-banks    Sandbox-harvest & inline string banks   │
- │  ├── 11. simplify-tricks        Fold coercion tricks (![], !0, void 0)  │
- │  ├── 12. normalize-conditions   Flip inverted Yoda comparisons          │
- │  ├── 13. fold-number-tostring   Fold Number(n).toString(radix)          │
- │  ├── 14. fold-unescape          Fold unescape, atob, btoa, URI codecs   │
- │  ├── 15. fold-constants         Pure binary/unary/logical fixpoint loop │
- │  └── 16. propagate-constants    Propagate constant values & aliases     │
+ │  ├── 11. decode-string-banks    Sandbox-harvest & inline string banks   │
+ │  ├── 12. simplify-tricks        Fold coercion tricks (![], !0, void 0)  │
+ │  ├── 13. normalize-conditions   Flip inverted Yoda comparisons          │
+ │  ├── 14. fold-number-tostring   Fold Number(n).toString(radix)          │
+ │  ├── 15. fold-unescape          Fold unescape, atob, btoa, URI codecs   │
+ │  ├── 16. fold-constants         Pure binary/unary/logical fixpoint loop │
+ │  └── 17. propagate-constants    Propagate constant values & aliases     │
  │                                                                         │
  │  Stage 4: Secondary Fixpoint Pass                                       │
- │  ├── 17. strip-debug-traps      Purge traps exposed by folded strings   │
- │  ├── 18. strip-self-defending   Re-evaluate exposed tamper controllers  │
- │  ├── 19. inline-proxies         Inline remaining secondary proxies      │
- │  ├── 20. unflatten-control-flow Unflatten remaining nested dispatchers  │
- │  ├── 21. unwrap-logical-guards  Unwrap newly exposed logical guards     │
- │  ├── 22. unwrap-ternaries       Unwrap newly exposed statement ternaries│
- │  ├── 23. fold-constants         Fold newly exposed constant expressions │
- │  └── 24. propagate-constants    Collapse secondary alias references     │
+ │  ├── 18. strip-debug-traps      Purge traps exposed by folded strings   │
+ │  ├── 19. strip-self-defending   Re-evaluate exposed tamper controllers  │
+ │  ├── 20. inline-proxies         Inline remaining secondary proxies      │
+ │  ├── 21. unflatten-control-flow Unflatten remaining nested dispatchers  │
+ │  ├── 22. unwrap-logical-guards  Unwrap newly exposed logical guards     │
+ │  ├── 23. unwrap-ternaries       Unwrap newly exposed statement ternaries│
+ │  ├── 24. fuse-literals          Re-fuse secondary split strings         │
+ │  ├── 25. fold-constants         Fold newly exposed constant expressions │
+ │  └── 26. propagate-constants    Collapse secondary alias references     │
  │                                                                         │
  │  Stage 5: Normalization & Final Polish                                  │
- │  ├── 25. normalize-conditions   Final sweep on inverted comparisons     │
- │  ├── 26. normalize-literals     Convert 0x1f4 -> 500 and unescape chars │
- │  ├── 27. normalize-member       Rewrite a["prop"] -> a.prop             │
- │  ├── 28. remove-dead-code       Drop literal branches & unreachable code│
- │  ├── 29. rename-identifiers     Scope-aware renaming of junk tokens     │
- │  └── 30. cleanup                Prune empty statements & pure literals  │
+ │  ├── 27. normalize-conditions   Final sweep on inverted comparisons     │
+ │  ├── 28. normalize-literals     Convert 0x1f4 -> 500 and unescape chars │
+ │  ├── 29. normalize-member       Rewrite a["prop"] -> a.prop             │
+ │  ├── 30. remove-dead-code       Drop literal branches & unreachable code│
+ │  ├── 31. rename-identifiers     Scope-aware renaming of junk tokens     │
+ │  └── 32. cleanup                Prune empty statements & pure literals  │
  │                                                                         │
  └────────────────────────────────────┬────────────────────────────────────┘
                                       │
@@ -341,6 +346,29 @@ var b = configure();
 var c = start();
 ```
 
+### 13. Split String & Arithmetic Tree Fusion
+Collapses split string concatenations and pure compile-time arithmetic expressions bottom-up without executing arbitrary code:
+
+```javascript
+// Before
+var endpoint = "an" + "ti" + "_" + "bot" + "/telemetry";
+var offset = 0x10 * 4 + 2;
+
+// After disarm
+var endpoint = "anti_bot/telemetry";
+var offset = 66;
+```
+
+### 14. AST Complexity Telemetry & Readability Scoring
+Quantifies the structural impact of deobfuscation by measuring cyclomatic branch density, opaque identifier ratios, AST depth, and node volume:
+
+```
+metrics   complexity: 505 -> 142 (-71%) | AST nodes: 10781 -> 4210 (-60%) | score: 88/100
+```
+
+### 15. Semantic Differential Oracle
+Executes original obfuscated code and deobfuscated output side-by-side inside isolated V8 execution contexts to guarantee 100% behavioral equivalence and 0 semantic drift.
+
 ---
 
 ## CLI Reference
@@ -416,6 +444,15 @@ Verification suite checks:
 13. Statement ternary unrolling into structured if-else blocks
 14. Yoda condition normalization for equality and inequality operators
 15. Compound variable declaration splitting
+16. Split string literal and arithmetic tree fusion
+17. Structural complexity telemetry and readability scoring
+
+Differential Oracle checks:
+- Arithmetic and split string evaluation invariance
+- State machine control flow execution invariance
+- Proxy call and dictionary resolution invariance
+- Conditional guards and branch execution invariance
+- Mangled iterative Fibonacci algorithm invariance
 
 ---
 

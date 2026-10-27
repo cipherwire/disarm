@@ -245,4 +245,34 @@ console.log('Running disarm core verification suite...\n');
   console.log('  ok: compound variable declaration splitting');
 }
 
-console.log('\nAll 15 core verification checks passed successfully.');
+// 16. Split string literal and arithmetic tree fusion
+{
+  const input = [
+    'var full = "anti" + "bot" + "_" + "probe";',
+    'var math = 10 * 4 + 2;',
+    'var mixed = "code_" + (100 + 23);',
+  ].join('\n');
+  const { code } = deobfuscate(input);
+  assert.ok(code.includes('"antibot_probe"'), 'Split strings must be fused into single literal');
+  assert.ok(code.includes('42'), 'Arithmetic tree must be folded to 42');
+  assert.ok(code.includes('"code_123"'), 'Mixed string-numeric concatenation must fold to string literal');
+  console.log('  ok: literal and split string tree fusion');
+}
+
+// 17. Structural complexity telemetry and readability scoring
+{
+  const input = [
+    'function dispatch(code) {',
+    '  var _0x1a2b = code;',
+    '  if (_0x1a2b > 10) return _0x1a2b * 2;',
+    '  return 0;',
+    '}',
+  ].join('\n');
+  const { report } = deobfuscate(input);
+  assert.ok(report.telemetry, 'Report must contain telemetry measurements');
+  assert.ok(report.telemetry.initial.cyclomatic > 0, 'Initial cyclomatic complexity must be recorded');
+  assert.ok(report.telemetry.readabilityScore >= 0, 'Readability score must be computed');
+  console.log('  ok: structural complexity telemetry and scoring');
+}
+
+console.log('\nAll 17 core verification checks passed successfully.');
