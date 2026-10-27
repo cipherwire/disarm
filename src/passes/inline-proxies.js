@@ -59,6 +59,62 @@ function isValidProxyExpr(expr) {
 }
 
 /**
+ * Scope-safe parameter substitution that avoids corrupting non-computed member properties,
+ * object property keys, and inner function parameters/declarations.
+ */
+function substituteParams(astNode, paramMap) {
+  function walk(node, parent) {
+    if (!node || typeof node !== 'object') return node;
+
+    // Do NOT replace member expression non-computed properties: obj.prop
+    if (t.isIdentifier(node) && parent && t.isMemberExpression(parent) && parent.property === node && !parent.computed) {
+      return node;
+    }
+
+    // Do NOT replace object literal non-computed keys: { key: value }
+    if (t.isIdentifier(node) && parent && t.isObjectProperty(parent) && parent.key === node && !parent.computed) {
+      return node;
+    }
+
+    // Do NOT replace function or parameter declaration identifiers
+    if (parent && (t.isFunctionDeclaration(parent) || t.isFunctionExpression(parent) || t.isArrowFunctionExpression(parent))) {
+      if (parent.params.includes(node) || parent.id === node) return node;
+    }
+
+    if (t.isIdentifier(node) && paramMap.has(node.name)) {
+      return t.cloneNode(paramMap.get(node.name), true);
+    }
+
+    let activeMap = paramMap;
+    if (t.isFunction(node)) {
+      let shadowed = null;
+      for (const p of node.params) {
+        if (t.isIdentifier(p) && paramMap.has(p.name)) {
+          if (!shadowed) shadowed = new Map(paramMap);
+          shadowed.delete(p.name);
+        }
+      }
+      if (shadowed) activeMap = shadowed;
+    }
+
+    for (const key of Object.keys(node)) {
+      if (key === 'loc' || key === 'leadingComments' || key === 'trailingComments') continue;
+      const child = node[key];
+      if (Array.isArray(child)) {
+        for (let i = 0; i < child.length; i++) {
+          child[i] = walk(child[i], node);
+        }
+      } else if (typeof child === 'object') {
+        node[key] = walk(child, node);
+      }
+    }
+    return node;
+  }
+
+  return walk(astNode, null);
+}
+
+/**
  * Inline proxy wrapper functions and proxy object dictionaries.
  *
  * Anti-bot challenge scripts hide operations and decoders behind proxy layers:
@@ -74,11 +130,6 @@ export const inlineProxies = {
   run(ast, report) {
     let inlinedCalls = 0;
 
-    // -------------------------------------------------------------------------
-    // 1. Standalone wrapper functions
-    // -------------------------------------------------------------------------
-    const functionProxies = new Map(); // name -> { paramNames, expr, path }
-
     traverse(ast, {
       FunctionDeclaration(path) {
         const { id, params } = path.node;
@@ -86,239 +137,221 @@ export const inlineProxies = {
         const expr = getReturnExpr(path.node);
         if (!expr || !isValidProxyExpr(expr)) return;
         // Avoid recursive self-calls
-        if (t.isCallExpression(expr) && t.isIdentifier(expr.callee) && expr.callee.name === id.name) {
-          return;
+        if (t.isCallExpression(expr) && t.isIdentifier(expr.callee) && expr.callee.name === id.name) return;
+
+        const binding = path.scope.getBinding(id.name);
+        if (!binding || !binding.constant) return;
+        if (binding.referencePaths.length === 0) return;
+
+        const paramNames = params.filter((p) => t.isIdentifier(p)).map((p) => p.name);
+        const paramSet = new Set(paramNames);
+        const usedParamSet = new Set();
+        function findUsedParams(node) {
+          if (!node || typeof node !== 'object') return;
+          if (t.isIdentifier(node) && paramSet.has(node.name)) usedParamSet.add(node.name);
+          for (const key of Object.keys(node)) {
+            if (key === 'loc' || key === 'leadingComments' || key === 'trailingComments') continue;
+            if (Array.isArray(node[key])) node[key].forEach(findUsedParams);
+            else if (typeof node[key] === 'object') findUsedParams(node[key]);
+          }
         }
-        functionProxies.set(id.name, {
-          paramNames: params.filter((p) => t.isIdentifier(p)).map((p) => p.name),
-          expr,
-          path,
-        });
+        findUsedParams(expr);
+
+        const refs = [...binding.referencePaths];
+        let inlinedForThisProxy = 0;
+        for (const refPath of refs) {
+          if (!refPath.parentPath?.isCallExpression() || refPath.parentPath.node.callee !== refPath.node) {
+            continue;
+          }
+          const callPath = refPath.parentPath;
+          const args = callPath.node.arguments;
+
+          let safeArgs = true;
+          for (let i = 0; i < args.length; i++) {
+            const pName = paramNames[i];
+            if ((!pName || !usedParamSet.has(pName)) && !isPureNode(args[i])) {
+              safeArgs = false;
+              break;
+            }
+          }
+          if (!safeArgs) continue;
+
+          const paramMap = new Map();
+          paramNames.forEach((name, i) => {
+            paramMap.set(name, args[i] ? t.cloneNode(args[i], true) : t.identifier('undefined'));
+          });
+
+          const cloned = t.cloneNode(expr, true);
+          const inlined = substituteParams(cloned, paramMap);
+          callPath.replaceWith(inlined);
+          inlinedForThisProxy++;
+          inlinedCalls++;
+        }
+
+        if (inlinedForThisProxy === refs.length && refs.length > 0) {
+          try {
+            path.remove();
+            inlinedCalls++;
+          } catch {}
+        }
       },
+
       VariableDeclarator(path) {
         const { id, init } = path.node;
         if (!t.isIdentifier(id) || !init) return;
-        if (!t.isFunctionExpression(init) && !t.isArrowFunctionExpression(init)) return;
-        const expr = getReturnExpr(init);
-        if (!expr || !isValidProxyExpr(expr)) return;
-        functionProxies.set(id.name, {
-          paramNames: init.params.filter((p) => t.isIdentifier(p)).map((p) => p.name),
-          expr,
-          path,
-        });
-      },
-    });
 
-    if (functionProxies.size > 0) {
-      traverse(ast, {
-        CallExpression(path) {
-          const callee = path.node.callee;
-          if (!t.isIdentifier(callee) || !functionProxies.has(callee.name)) return;
-          const proxy = functionProxies.get(callee.name);
-          const args = path.node.arguments;
+        const binding = path.scope.getBinding(id.name);
+        if (!binding || !binding.constant) return;
+        if (binding.referencePaths.length === 0) return;
 
-          // Check that all arguments beyond param count or unused params are pure
-          const paramSet = new Set(proxy.paramNames);
+        // Case 1: Function expression / arrow function proxy
+        if (t.isFunctionExpression(init) || t.isArrowFunctionExpression(init)) {
+          const expr = getReturnExpr(init);
+          if (!expr || !isValidProxyExpr(expr)) return;
+
+          const paramNames = init.params.filter((p) => t.isIdentifier(p)).map((p) => p.name);
+          const paramSet = new Set(paramNames);
           const usedParamSet = new Set();
           function findUsedParams(node) {
             if (!node || typeof node !== 'object') return;
-            if (t.isIdentifier(node) && paramSet.has(node.name)) {
-              usedParamSet.add(node.name);
-            }
+            if (t.isIdentifier(node) && paramSet.has(node.name)) usedParamSet.add(node.name);
             for (const key of Object.keys(node)) {
               if (key === 'loc' || key === 'leadingComments' || key === 'trailingComments') continue;
-              if (Array.isArray(node[key])) {
-                for (const item of node[key]) findUsedParams(item);
-              } else if (typeof node[key] === 'object') {
-                findUsedParams(node[key]);
+              if (Array.isArray(node[key])) node[key].forEach(findUsedParams);
+              else if (typeof node[key] === 'object') findUsedParams(node[key]);
+            }
+          }
+          findUsedParams(expr);
+
+          const refs = [...binding.referencePaths];
+          let inlinedForThisProxy = 0;
+          for (const refPath of refs) {
+            if (!refPath.parentPath?.isCallExpression() || refPath.parentPath.node.callee !== refPath.node) {
+              continue;
+            }
+            const callPath = refPath.parentPath;
+            const args = callPath.node.arguments;
+
+            let safeArgs = true;
+            for (let i = 0; i < args.length; i++) {
+              const pName = paramNames[i];
+              if ((!pName || !usedParamSet.has(pName)) && !isPureNode(args[i])) {
+                safeArgs = false;
+                break;
               }
             }
+            if (!safeArgs) continue;
+
+            const paramMap = new Map();
+            paramNames.forEach((name, i) => {
+              paramMap.set(name, args[i] ? t.cloneNode(args[i], true) : t.identifier('undefined'));
+            });
+
+            const cloned = t.cloneNode(expr, true);
+            const inlined = substituteParams(cloned, paramMap);
+            callPath.replaceWith(inlined);
+            inlinedForThisProxy++;
+            inlinedCalls++;
           }
-          findUsedParams(proxy.expr);
 
-          for (let i = 0; i < args.length; i++) {
-            const paramName = proxy.paramNames[i];
-            if ((!paramName || !usedParamSet.has(paramName)) && !isPureNode(args[i])) {
-              return; // Unused arg has side effects, do not drop
-            }
-          }
-
-          const paramMap = new Map();
-          proxy.paramNames.forEach((name, i) => {
-            paramMap.set(name, args[i] ? t.cloneNode(args[i], true) : t.identifier('undefined'));
-          });
-
-          function substitute(node) {
-            if (!node || typeof node !== 'object') return node;
-            if (t.isIdentifier(node) && paramMap.has(node.name)) {
-              return paramMap.get(node.name);
-            }
-            for (const key of Object.keys(node)) {
-              if (key === 'loc' || key === 'leadingComments' || key === 'trailingComments') continue;
-              if (Array.isArray(node[key])) {
-                node[key] = node[key].map((item) => substitute(item));
-              } else if (typeof node[key] === 'object') {
-                node[key] = substitute(node[key]);
+          if (inlinedForThisProxy === refs.length && refs.length > 0) {
+            try {
+              if (path.parentPath?.isVariableDeclaration() && path.parentPath.node.declarations.length === 1) {
+                path.parentPath.remove();
+              } else {
+                path.remove();
               }
-            }
-            return node;
+              inlinedCalls++;
+            } catch {}
           }
-
-          const clonedExpr = t.cloneNode(proxy.expr, true);
-          const inlined = substitute(clonedExpr);
-          path.replaceWith(inlined);
-          inlinedCalls++;
-        },
-      });
-    }
-
-    // -------------------------------------------------------------------------
-    // 2. Object proxy dictionaries
-    // -------------------------------------------------------------------------
-    const objectProxies = new Map(); // objName -> Map<propKey, { isLiteral, valueNode, paramNames, expr }>
-
-    traverse(ast, {
-      VariableDeclarator(path) {
-        const { id, init } = path.node;
-        if (!t.isIdentifier(id) || !init || !t.isObjectExpression(init)) return;
-        const propMap = new Map();
-        let validDict = true;
-
-        for (const prop of init.properties) {
-          if (!t.isObjectProperty(prop)) {
-            validDict = false;
-            break;
-          }
-          let key;
-          if (!prop.computed && t.isIdentifier(prop.key)) {
-            key = prop.key.name;
-          } else if (t.isStringLiteral(prop.key)) {
-            key = prop.key.value;
-          } else {
-            validDict = false;
-            break;
-          }
-
-          const val = prop.value;
-          if (t.isStringLiteral(val) || t.isNumericLiteral(val) || t.isBooleanLiteral(val)) {
-            propMap.set(key, { isLiteral: true, node: val });
-          } else if (t.isFunctionExpression(val) || t.isArrowFunctionExpression(val)) {
-            const expr = getReturnExpr(val);
-            if (expr && isValidProxyExpr(expr)) {
-              propMap.set(key, {
-                isLiteral: false,
-                paramNames: val.params.filter((p) => t.isIdentifier(p)).map((p) => p.name),
-                expr,
-              });
-            } else {
-              validDict = false;
-              break;
-            }
-          } else {
-            validDict = false;
-            break;
-          }
+          return;
         }
 
-        if (validDict && propMap.size > 0) {
-          objectProxies.set(id.name, { propMap, path });
+        // Case 2: Object dictionary proxy
+        if (t.isObjectExpression(init)) {
+          const propMap = new Map();
+          for (const prop of init.properties) {
+            if (!t.isObjectProperty(prop)) return;
+            let key;
+            if (!prop.computed && t.isIdentifier(prop.key)) key = prop.key.name;
+            else if (t.isStringLiteral(prop.key)) key = prop.key.value;
+            else return;
+
+            const val = prop.value;
+            if (t.isStringLiteral(val) || t.isNumericLiteral(val) || t.isBooleanLiteral(val)) {
+              propMap.set(key, { isLiteral: true, node: val });
+            } else if (t.isFunctionExpression(val) || t.isArrowFunctionExpression(val)) {
+              const expr = getReturnExpr(val);
+              if (expr && isValidProxyExpr(expr)) {
+                propMap.set(key, {
+                  isLiteral: false,
+                  paramNames: val.params.filter((p) => t.isIdentifier(p)).map((p) => p.name),
+                  expr,
+                });
+              } else {
+                return;
+              }
+            } else {
+              return;
+            }
+          }
+
+          if (propMap.size === 0) return;
+
+          const refs = [...binding.referencePaths];
+          let inlinedForThisProxy = 0;
+          for (const refPath of refs) {
+            const parentPath = refPath.parentPath;
+            if (!parentPath?.isMemberExpression() || parentPath.node.object !== refPath.node) continue;
+
+            let key;
+            if (!parentPath.node.computed && t.isIdentifier(parentPath.node.property)) {
+              key = parentPath.node.property.name;
+            } else if (parentPath.node.computed && t.isStringLiteral(parentPath.node.property)) {
+              key = parentPath.node.property.value;
+            } else {
+              continue;
+            }
+
+            const entry = propMap.get(key);
+            if (!entry) continue;
+
+            if (entry.isLiteral) {
+              if (parentPath.parentPath?.isCallExpression() && parentPath.parentPath.node.callee === parentPath.node) {
+                continue;
+              }
+              parentPath.replaceWith(t.cloneNode(entry.node, true));
+              inlinedForThisProxy++;
+              inlinedCalls++;
+            } else {
+              const callPath = parentPath.parentPath;
+              if (!callPath?.isCallExpression() || callPath.node.callee !== parentPath.node) continue;
+              const args = callPath.node.arguments;
+              const paramMap = new Map();
+              entry.paramNames.forEach((name, i) => {
+                paramMap.set(name, args[i] ? t.cloneNode(args[i], true) : t.identifier('undefined'));
+              });
+              const cloned = t.cloneNode(entry.expr, true);
+              const inlined = substituteParams(cloned, paramMap);
+              callPath.replaceWith(inlined);
+              inlinedForThisProxy++;
+              inlinedCalls++;
+            }
+          }
+
+          if (inlinedForThisProxy === refs.length && refs.length > 0) {
+            try {
+              if (path.parentPath?.isVariableDeclaration() && path.parentPath.node.declarations.length === 1) {
+                path.parentPath.remove();
+              } else {
+                path.remove();
+              }
+              inlinedCalls++;
+            } catch {}
+          }
         }
       },
     });
-
-    if (objectProxies.size > 0) {
-      traverse(ast, {
-        CallExpression(path) {
-          const callee = path.node.callee;
-          if (!t.isMemberExpression(callee)) return;
-          if (!t.isIdentifier(callee.object) || !objectProxies.has(callee.object.name)) return;
-          const dict = objectProxies.get(callee.object.name);
-          let key;
-          if (!callee.computed && t.isIdentifier(callee.property)) {
-            key = callee.property.name;
-          } else if (callee.computed && t.isStringLiteral(callee.property)) {
-            key = callee.property.value;
-          } else {
-            return;
-          }
-
-          const entry = dict.propMap.get(key);
-          if (!entry || entry.isLiteral) return;
-          const args = path.node.arguments;
-          const paramMap = new Map();
-          entry.paramNames.forEach((name, i) => {
-            paramMap.set(name, args[i] ? t.cloneNode(args[i], true) : t.identifier('undefined'));
-          });
-
-          function substitute(node) {
-            if (!node || typeof node !== 'object') return node;
-            if (t.isIdentifier(node) && paramMap.has(node.name)) {
-              return paramMap.get(node.name);
-            }
-            for (const propKey of Object.keys(node)) {
-              if (propKey === 'loc' || propKey === 'leadingComments' || propKey === 'trailingComments') continue;
-              if (Array.isArray(node[propKey])) {
-                node[propKey] = node[propKey].map((item) => substitute(item));
-              } else if (typeof node[propKey] === 'object') {
-                node[propKey] = substitute(node[propKey]);
-              }
-            }
-            return node;
-          }
-
-          const clonedExpr = t.cloneNode(entry.expr, true);
-          const inlined = substitute(clonedExpr);
-          path.replaceWith(inlined);
-          inlinedCalls++;
-        },
-        MemberExpression(path) {
-          // If this member expression is the callee of a CallExpression, let the CallExpression handler deal with it
-          if (path.parentPath?.isCallExpression() && path.parentPath.node.callee === path.node) return;
-          if (!t.isIdentifier(path.node.object) || !objectProxies.has(path.node.object.name)) return;
-          const dict = objectProxies.get(path.node.object.name);
-          let key;
-          if (!path.node.computed && t.isIdentifier(path.node.property)) {
-            key = path.node.property.name;
-          } else if (path.node.computed && t.isStringLiteral(path.node.property)) {
-            key = path.node.property.value;
-          } else {
-            return;
-          }
-
-          const entry = dict.propMap.get(key);
-          if (!entry || !entry.isLiteral) return;
-          path.replaceWith(t.cloneNode(entry.node, true));
-          inlinedCalls++;
-        },
-      });
-    }
-
-    // -------------------------------------------------------------------------
-    // 3. Remove unreferenced proxy functions and unreferenced object dictionaries
-    // -------------------------------------------------------------------------
-    for (const [name, proxy] of functionProxies.entries()) {
-      try {
-        const binding = proxy.path.scope.getBinding(name);
-        if (binding && binding.referencePaths.length === 0) {
-          proxy.path.remove();
-          inlinedCalls++;
-        }
-      } catch {
-        // Safe to ignore if already detached
-      }
-    }
-
-    for (const [name, dict] of objectProxies.entries()) {
-      try {
-        const binding = dict.path.scope.getBinding(name);
-        if (binding && binding.referencePaths.length === 0) {
-          dict.path.remove();
-          inlinedCalls++;
-        }
-      } catch {
-        // Safe to ignore if already detached
-      }
-    }
 
     report.count(inlinedCalls);
     if (inlinedCalls > 0) {
