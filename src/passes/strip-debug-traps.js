@@ -49,8 +49,23 @@ function bodyHasDebuggerTrap(body) {
 export const stripDebugTraps = {
   name: 'strip-debug-traps',
   description: 'Remove debugger-trap functions, their call sites, and interval registrations.',
-  run(ast, report) {
+  run(ast, report, context) {
+    const annotate = Boolean(context?.options?.annotate);
     const defs = []; // { path, name }
+
+    const removeStatement = (stmtPath) => {
+      if (annotate) {
+        try {
+          const empty = t.emptyStatement();
+          t.addComment(empty, 'leading', ' [disarm] Defeated debugger trap', true);
+          stmtPath.replaceWith(empty);
+          return;
+        } catch {
+          // fallback to removal
+        }
+      }
+      stmtPath.remove();
+    };
 
     traverse(ast, {
       'FunctionDeclaration|FunctionExpression'(path) {
@@ -68,7 +83,7 @@ export const stripDebugTraps = {
           if (t.isIdentifier(callee) && (callee.name === 'setInterval' || callee.name === 'setTimeout')) {
             const statement = parent.getStatementParent();
             if (statement) {
-              statement.remove();
+              removeStatement(statement);
               report.count();
             }
           }
@@ -93,7 +108,7 @@ export const stripDebugTraps = {
           if (!t.isCallExpression(expression)) return;
           const callee = expression.callee;
           if (t.isIdentifier(callee) && names.has(callee.name)) {
-            path.remove();
+            removeStatement(path);
             report.count();
             return;
           }
@@ -107,7 +122,7 @@ export const stripDebugTraps = {
                 (callee.computed && t.isStringLiteral(callee.property) &&
                   (callee.property.value === 'setInterval' || callee.property.value === 'setTimeout'))));
           if (isTimerCall && t.isIdentifier(expression.arguments[0]) && names.has(expression.arguments[0].name)) {
-            path.remove();
+            removeStatement(path);
             report.count();
           }
         },
@@ -128,7 +143,7 @@ export const stripDebugTraps = {
         if (!path.node.arguments.some((arg) => t.isStringLiteral(arg) && arg.value.includes('debugger'))) return;
         const statement = path.getStatementParent();
         if (statement) {
-          statement.remove();
+          removeStatement(statement);
           report.count();
         }
       },

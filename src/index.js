@@ -3,6 +3,7 @@ import { print } from './core/print.js';
 import { runPasses } from './core/pipeline.js';
 import { Report } from './core/report.js';
 import { measureComplexity, compareTelemetry } from './core/telemetry.js';
+import { inspectTelemetry, formatInspectionReport } from './core/inspector.js';
 import { defaultPasses } from './passes/index.js';
 
 /**
@@ -29,7 +30,11 @@ export function deobfuscate(code, options = {}) {
     report.setTelemetry(compareTelemetry(initialMetrics, finalMetrics));
   }
 
+  // Record detected fingerprinting probes and endpoints on the clean AST
+  report.meta.inspection = inspectTelemetry(ast);
+
   return { code: print(ast), report, ast };
 }
 
+export { inspectTelemetry, formatInspectionReport };
 export default deobfuscate;

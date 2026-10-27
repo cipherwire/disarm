@@ -275,4 +275,54 @@ console.log('Running disarm core verification suite...\n');
   console.log('  ok: structural complexity telemetry and scoring');
 }
 
-console.log('\nAll 17 core verification checks passed successfully.');
+// 18. Browser fingerprinting and telemetry inspection
+{
+  const input = [
+    'var canvas = document.createElement("canvas");',
+    'var ctx = canvas.getContext("2d");',
+    'var fp = canvas.toDataURL();',
+    'var isBot = navigator.webdriver;',
+    'var endpoint = "https://telemetry.example.com/v1/sensor";',
+  ].join('\n');
+  const { report } = deobfuscate(input);
+  assert.ok(report.meta.inspection, 'Report must contain inspection results');
+  assert.ok(report.meta.inspection.summary.hasCanvas, 'Must detect canvas fingerprinting');
+  assert.ok(report.meta.inspection.summary.hasAutomationCheck, 'Must detect automation check');
+  assert.ok(report.meta.inspection.endpoints.includes('https://telemetry.example.com/v1/sensor'), 'Must extract telemetry endpoint');
+  console.log('  ok: browser fingerprint and telemetry inspection');
+}
+
+// 19. Explanatory comment annotations for disarmed defenses
+{
+  const input = [
+    'function test() {',
+    '  var seq = "0|1".split("|"), idx = 0;',
+    '  var res = 10;',
+    '  while (true) {',
+    '    switch (seq[idx++]) {',
+    '      case "0": res += 5; continue;',
+    '      case "1": return res; continue;',
+    '    }',
+    '    break;',
+    '  }',
+    '}',
+  ].join('\n');
+  const { code } = deobfuscate(input, { annotate: true });
+  assert.ok(code.includes('[disarm] Reconstructed state machine control flow'), 'Must insert explanatory comment above unflattened block');
+  console.log('  ok: explanatory trap and unflattening annotations');
+}
+
+// 20. Stdin pipe ingestion and direct stdout streaming
+{
+  const { execFileSync } = await import('node:child_process');
+  const input = 'var greeting = "hello" + "_" + "world";';
+  const stdout = execFileSync(
+    process.execPath,
+    ['src/cli.js', '-'],
+    { input, encoding: 'utf8' }
+  );
+  assert.ok(stdout.includes('var greeting = "hello_world";'), 'CLI must read from stdin and write to stdout');
+  console.log('  ok: stdin pipe streaming');
+}
+
+console.log('\nAll 20 core verification checks passed successfully.');

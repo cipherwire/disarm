@@ -375,11 +375,15 @@ Executes original obfuscated code and deobfuscated output side-by-side inside is
 
 ```
 Usage:
-  disarm <input.js> [-o output.js] [--report report.json] [--no-sandbox]
+  disarm <input.js> [-o output.js] [--report report.json] [--inspect] [--annotate]
+  disarm inspect <input.js>
+  curl -s <url> | disarm -
 
 Options:
   -o, --output    Write cleaned JavaScript here (default: output/<basename>.clean.js)
   --report        Write the JSON audit report here (default: output/<basename>.report.json)
+  --inspect       Display detected browser fingerprinting probes and endpoints
+  --annotate      Inject explanatory comments above neutralized traps
   --no-sandbox    Disable the sandboxed string-bank harvester
   -h, --help      Show usage details
 ```
@@ -446,6 +450,9 @@ Verification suite checks:
 15. Compound variable declaration splitting
 16. Split string literal and arithmetic tree fusion
 17. Structural complexity telemetry and readability scoring
+18. Browser fingerprint and telemetry inspection
+19. Explanatory comment annotations for disarmed defenses
+20. Stdin pipe ingestion and direct stdout streaming
 
 Differential Oracle checks:
 - Arithmetic and split string evaluation invariance

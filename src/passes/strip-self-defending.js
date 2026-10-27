@@ -78,7 +78,8 @@ const noopFn = () => t.functionExpression(null, [], t.blockStatement([]));
 export const stripSelfDefending = {
   name: 'strip-self-defending',
   description: 'Neutralize single-call controllers and their anti-tamper payloads with no-op functions.',
-  run(ast, report) {
+  run(ast, report, context) {
+    const annotate = Boolean(context?.options?.annotate);
     const controllers = []; // { initPath, name, binding }
     traverse(ast, {
       VariableDeclarator(path) {
@@ -123,10 +124,18 @@ export const stripSelfDefending = {
         }
       }
 
+      const replaceWithNoop = (targetPath) => {
+        const replacement = noopFn();
+        if (annotate) {
+          t.addComment(replacement, 'leading', ' [disarm] Neutralized self-defending anti-tamper check', true);
+        }
+        targetPath.replaceWith(replacement);
+      };
+
       // ctrl(this, payload) -> a no-op function literal (payload leaves the tree).
       for (const call of callSites) {
         try {
-          call.replaceWith(noopFn());
+          replaceWithNoop(call);
           neutralized++;
         } catch {
           // already detached
@@ -135,7 +144,7 @@ export const stripSelfDefending = {
       // Any other consumption of the controller gets a no-op too.
       for (const ref of otherRefs) {
         try {
-          ref.replaceWith(noopFn());
+          replaceWithNoop(ref);
           neutralized++;
         } catch {
           // already detached

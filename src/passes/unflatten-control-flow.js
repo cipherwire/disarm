@@ -62,7 +62,7 @@ function resolveSequence(node) {
 export const unflattenControlFlow = {
   name: 'unflatten-control-flow',
   description: 'Reconstruct linear execution order from switch-dispatch state machine loops.',
-  run(ast, report) {
+  run(ast, report, context) {
     let unflattened = 0;
 
     traverse(ast, {
@@ -138,6 +138,9 @@ export const unflattenControlFlow = {
         }
 
         // Replace the dispatch loop with linear statements
+        if (context?.options?.annotate && linearStatements.length > 0) {
+          t.addComment(linearStatements[0], 'leading', ' [disarm] Reconstructed state machine control flow', true);
+        }
         path.replaceWithMultiple(linearStatements);
         unflattened++;
 
