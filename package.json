@@ -1,7 +1,20 @@
 {
   "name": "disarm",
   "version": "0.1.0",
-  "description": "Deobfuscator that turns hostile anti-bot challenge scripts into readable JavaScript: verification-first engineering.",
+  "description": "Production-grade AST deobfuscator that reverses hostile anti-bot challenge scripts into readable JavaScript: unflattens control flow, inlines proxies, and harvests string banks.",
+  "keywords": [
+    "deobfuscator",
+    "anti-bot",
+    "reverse-engineering",
+    "ast",
+    "babel",
+    "cloudflare-turnstile",
+    "akamai",
+    "datadome",
+    "kasada",
+    "threatmetrix",
+    "control-flow-unflattening"
+  ],
   "type": "module",
   "main": "src/index.js",
   "bin": {
