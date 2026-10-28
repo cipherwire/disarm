@@ -106,8 +106,32 @@ if (!isStdin) {
   }
 }
 
+const showProgress = Boolean(process.stderr.isTTY && !process.env.CI);
+
+const onProgress = (current, total, passName) => {
+  if (!showProgress) return;
+  const percent = Math.round((current / total) * 100);
+  const width = 14;
+  const filled = Math.round((percent / 100) * width);
+  const bar = '='.repeat(filled) + (filled < width ? '>' : '') + ' '.repeat(Math.max(0, width - filled - (filled < width ? 1 : 0)));
+  process.stderr.write(
+    `\r${colors.dim('[')}${colors.cyan(String(current).padStart(2))}/${colors.cyan(total)}${colors.dim(']')} ` +
+    `${colors.yellow(`[${bar}]`)} ${colors.bold(colors.brightGreen(`${percent}%`))} ` +
+    `${colors.white(passName.padEnd(24))}`
+  );
+};
+
 const source = isStdin ? fs.readFileSync(0, 'utf8') : fs.readFileSync(input, 'utf8');
-const { code, report } = deobfuscate(source, { sandbox, annotate });
+
+if (showProgress) {
+  process.stderr.write(`${colors.dim('[disarm]')} running deobfuscation pipeline...\n`);
+}
+
+const { code, report } = deobfuscate(source, { sandbox, annotate, onProgress });
+
+if (showProgress) {
+  process.stderr.write('\r\x1b[2K\r');
+}
 
 if (isStdin && !output) {
   process.stdout.write(code + '\n');

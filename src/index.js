@@ -18,12 +18,12 @@ import { defaultPasses } from './passes/index.js';
  *   passes    : custom pass list (default: the full ordered pipeline)
  */
 export function deobfuscate(code, options = {}) {
-  const { passes = defaultPasses, telemetry = true, ...rest } = options;
+  const { passes = defaultPasses, telemetry = true, onProgress, ...rest } = options;
   const ast = parse(code);
   const report = new Report();
 
   const initialMetrics = telemetry ? measureComplexity(ast) : null;
-  runPasses(ast, passes, report, { options: rest });
+  runPasses(ast, passes, report, { options: rest, onProgress });
 
   if (telemetry && initialMetrics) {
     const finalMetrics = measureComplexity(ast);
