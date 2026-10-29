@@ -58,6 +58,15 @@ export const propagateConstants = {
           if (binding.referencePaths.length === 0) return;
           const targetBinding = path.scope.getBinding(init.name);
           if (!targetBinding) return;
+          // The alias captured the target's VALUE at initialization  -  if the
+          // target can be reassigned afterwards, replacing reads of the alias
+          // with the target would observe the wrong value.
+          if (!targetBinding.constant) return;
+          // The target must also already exist at the alias's initialization:
+          // `var b = a; var a = 1;` captures undefined, not 1.
+          const targetStart = targetBinding.path.node?.start;
+          const aliasStart = path.node.start;
+          if (typeof targetStart !== 'number' || typeof aliasStart !== 'number' || targetStart > aliasStart) return;
 
           let safe = true;
           for (const refPath of binding.referencePaths) {

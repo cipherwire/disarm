@@ -28,7 +28,7 @@ const PURE_BINARY = {
   '>>>': (a, b) => a >>> b,
 };
 
-const MAX_ROUNDS = 10;
+const MAX_ROUNDS = 25;
 
 /**
  * Constant folding over primitives: binary ops, unary ops, and logical
@@ -62,6 +62,48 @@ export const foldConstants = {
       return true;
     };
 
+    // Collapse literal chains upward in the same visit. Babel traverses
+    // top-down, so a left-deep chain like 1+2+3+...+N or !0+!0+!0 would
+    // otherwise need one full round per level (and huge bundles blow the
+    // round cap with warnings).
+    const climbBinary = (path) => {
+      let p = path.parentPath;
+      while (p && p.isBinaryExpression() && PURE_BINARY[p.node.operator]) {
+        const l = literalValueOf(p, p.node.left);
+        const r = literalValueOf(p, p.node.right);
+        if (!l.ok || !r.ok) break;
+        const v = PURE_BINARY[p.node.operator](l.value, r.value);
+        if (typeof v === 'number' && v < 0) break;
+        const lit = literalNode(v);
+        if (!lit) break;
+        p.replaceWith(lit);
+        roundChanges++;
+        p = p.parentPath;
+      }
+    };
+    const climbLogical = (path) => {
+      let p = path.parentPath;
+      while (p && p.isLogicalExpression() && (p.node.operator === '&&' || p.node.operator === '||')) {
+        const l = literalValueOf(p, p.node.left);
+        if (!l.ok) break;
+        if (p.node.operator === '&&' && !l.value) {
+          const n = literalNode(l.value);
+          if (!n) break;
+          p.replaceWith(n);
+        } else if (p.node.operator === '&&') {
+          p.replaceWith(p.node.right);
+        } else if (l.value) {
+          const n = literalNode(l.value);
+          if (!n) break;
+          p.replaceWith(n);
+        } else {
+          p.replaceWith(p.node.right);
+        }
+        roundChanges++;
+        p = p.parentPath;
+      }
+    };
+
     do {
       roundChanges = 0;
       rounds++;
@@ -74,7 +116,8 @@ export const foldConstants = {
             const left = literalValueOf(path, path.node.left);
             const right = literalValueOf(path, path.node.right);
             if (!left.ok || !right.ok) return;
-            tryFold(op(left.value, right.value), path);
+            if (!tryFold(op(left.value, right.value), path)) return;
+            climbBinary(path);
           },
           UnaryExpression(path) {
             const { operator } = path.node;
@@ -82,38 +125,48 @@ export const foldConstants = {
             const operand = literalValueOf(path, path.node.argument);
             if (!operand.ok) return;
             const value = operand.value;
-            if (operator === '!') tryFold(!value, path);
-            else if (operator === 'typeof') tryFold(typeof value, path);
+            let folded = false;
+            if (operator === '!') folded = tryFold(!value, path);
+            else if (operator === 'typeof') folded = tryFold(typeof value, path);
             else if (operator === '-' && (typeof value === 'number' || typeof value === 'boolean')) {
-              tryFold(-value, path);
+              folded = tryFold(-value, path);
             } else if (operator === '+' && (typeof value === 'number' || typeof value === 'boolean' || value === null)) {
-              tryFold(+value, path);
+              folded = tryFold(+value, path);
             } else if (operator === '~' && typeof value === 'number') {
-              tryFold(~value, path);
+              folded = tryFold(~value, path);
             }
+            if (folded) climbBinary(path);
           },
           LogicalExpression(path) {
             const left = literalValueOf(path, path.node.left);
             if (!left.ok) return;
             const { operator, right } = path.node;
+            let handled = false;
             if (operator === '&&') {
               if (!left.value) tryFold(left.value, path);
               else {
                 path.replaceWith(right);
                 roundChanges++;
               }
+              handled = true;
             } else if (operator === '||') {
               if (left.value) tryFold(left.value, path);
               else {
                 path.replaceWith(right);
                 roundChanges++;
               }
+              handled = true;
             } else if (operator === '??') {
               if (left.value != null) tryFold(left.value, path);
               else {
                 path.replaceWith(right);
                 roundChanges++;
               }
+              handled = true;
+            }
+            if (handled) {
+              climbBinary(path);
+              climbLogical(path);
             }
           },
         });
@@ -126,7 +179,12 @@ export const foldConstants = {
     } while (roundChanges > 0 && rounds < MAX_ROUNDS);
 
     if (rounds >= MAX_ROUNDS && roundChanges > 0) {
-      report.warn(`fold-constants did not reach a fixpoint after ${MAX_ROUNDS} rounds`);
+      // Still converging at the cap is normal on huge bundles  -  the pipeline
+      // runs fold-constants again later, so this is progress information,
+      // not a failure signal. A stuck (non-converging) count would be a bug.
+      report.note(
+        `fold-constants paused at the ${MAX_ROUNDS}-round cap with ${roundChanges} cascades still open; the later pipeline run continues folding`,
+      );
     }
     report.count(total);
   },

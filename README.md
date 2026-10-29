@@ -461,6 +461,21 @@ Differential Oracle checks:
 - Conditional guards and branch execution invariance
 - Mangled iterative Fibonacci algorithm invariance
 
+Audit Regression Probes (tools/audit-probe.js):
+- B1: inline-proxies impure arg multi-use side-effect safety
+- B2: inline-proxies argument evaluation order preservation
+- B3: propagate-constants stale alias value protection
+- B4: unflatten-control-flow nested loop break/continue bail
+- B5: propagate-constants bare var statement prevention
+- B6: long arithmetic chain climbing fixpoint convergence
+- B7: inline-proxies object property shorthand preservation
+
+Behavior Gauntlet Suite (test/behavior.js):
+- 10 fixture round-trips (control-flow, hex names, maxhard, minified, string array)
+- Real-world ThreatMetrix dynamic script hidden string recovery
+- Real-world obfuscator.io sample execution safety
+- Obfuscator gauntlet technique manifest fingerprinting
+
 ---
 
 ## License

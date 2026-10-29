@@ -149,6 +149,58 @@ function substituteParams(astNode, paramMap) {
 }
 
 /**
+ * Count how often each parameter appears in the proxy expression.
+ * Over-counts identifiers in non-computed property positions, which is
+ * the safe direction: it can only skip an inlining, never corrupt one.
+ */
+function countParamUsage(expr, paramNames) {
+  const counts = new Map(paramNames.map((name) => [name, 0]));
+  (function walk(node) {
+    if (!node || typeof node !== 'object') return;
+    if (t.isIdentifier(node) && counts.has(node.name)) {
+      counts.set(node.name, counts.get(node.name) + 1);
+    }
+    for (const key of Object.keys(node)) {
+      if (key === 'loc' || key === 'leadingComments' || key === 'trailingComments') continue;
+      const child = node[key];
+      if (Array.isArray(child)) child.forEach(walk);
+      else if (child && typeof child === 'object') walk(child);
+    }
+  })(expr);
+  return counts;
+}
+
+/**
+ * Decide whether a call's arguments can be safely substituted into the
+ * proxy expression:
+ *   - args whose parameter is unused (or missing) are dropped entirely,
+ *     so they must be pure (no discarded side effects);
+ *   - args whose parameter is used more than once would be duplicated,
+ *     so they must be pure (no doubled side effects);
+ *   - with two or more used parameters, impure args could end up
+ *     evaluating in a different order than the original call.
+ */
+function areArgsSubstitutionSafe(usedCounts, paramNames, args) {
+  let usedParams = 0;
+  let impureUsed = 0;
+  for (let i = 0; i < args.length; i++) {
+    const name = paramNames[i];
+    const count = name ? (usedCounts.get(name) ?? 0) : 0;
+    if (count === 0) {
+      if (!isPureNode(args[i])) return false;
+      continue;
+    }
+    usedParams++;
+    if (!isPureNode(args[i])) {
+      impureUsed++;
+      if (count > 1) return false;
+    }
+  }
+  if (usedParams >= 2 && impureUsed >= 1) return false;
+  return true;
+}
+
+/**
  * Inline proxy wrapper functions and proxy object dictionaries.
  *
  * Anti-bot challenge scripts hide operations and decoders behind proxy layers:
@@ -180,18 +232,7 @@ export const inlineProxies = {
         const paramNames = params.filter((p) => t.isIdentifier(p)).map((p) => p.name);
         if (mutatesParams(expr, paramNames)) return;
 
-        const paramSet = new Set(paramNames);
-        const usedParamSet = new Set();
-        function findUsedParams(node) {
-          if (!node || typeof node !== 'object') return;
-          if (t.isIdentifier(node) && paramSet.has(node.name)) usedParamSet.add(node.name);
-          for (const key of Object.keys(node)) {
-            if (key === 'loc' || key === 'leadingComments' || key === 'trailingComments') continue;
-            if (Array.isArray(node[key])) node[key].forEach(findUsedParams);
-            else if (typeof node[key] === 'object') findUsedParams(node[key]);
-          }
-        }
-        findUsedParams(expr);
+        const usedCounts = countParamUsage(expr, paramNames);
 
         const refs = [...binding.referencePaths];
         let inlinedForThisProxy = 0;
@@ -202,15 +243,7 @@ export const inlineProxies = {
           const callPath = refPath.parentPath;
           const args = callPath.node.arguments;
 
-          let safeArgs = true;
-          for (let i = 0; i < args.length; i++) {
-            const pName = paramNames[i];
-            if ((!pName || !usedParamSet.has(pName)) && !isPureNode(args[i])) {
-              safeArgs = false;
-              break;
-            }
-          }
-          if (!safeArgs) continue;
+          if (!areArgsSubstitutionSafe(usedCounts, paramNames, args)) continue;
 
           const paramMap = new Map();
           paramNames.forEach((name, i) => {
@@ -248,18 +281,7 @@ export const inlineProxies = {
           const paramNames = init.params.filter((p) => t.isIdentifier(p)).map((p) => p.name);
           if (mutatesParams(expr, paramNames)) return;
 
-          const paramSet = new Set(paramNames);
-          const usedParamSet = new Set();
-          function findUsedParams(node) {
-            if (!node || typeof node !== 'object') return;
-            if (t.isIdentifier(node) && paramSet.has(node.name)) usedParamSet.add(node.name);
-            for (const key of Object.keys(node)) {
-              if (key === 'loc' || key === 'leadingComments' || key === 'trailingComments') continue;
-              if (Array.isArray(node[key])) node[key].forEach(findUsedParams);
-              else if (typeof node[key] === 'object') findUsedParams(node[key]);
-            }
-          }
-          findUsedParams(expr);
+          const usedCounts = countParamUsage(expr, paramNames);
 
           const refs = [...binding.referencePaths];
           let inlinedForThisProxy = 0;
@@ -270,15 +292,7 @@ export const inlineProxies = {
             const callPath = refPath.parentPath;
             const args = callPath.node.arguments;
 
-            let safeArgs = true;
-            for (let i = 0; i < args.length; i++) {
-              const pName = paramNames[i];
-              if ((!pName || !usedParamSet.has(pName)) && !isPureNode(args[i])) {
-                safeArgs = false;
-                break;
-              }
-            }
-            if (!safeArgs) continue;
+            if (!areArgsSubstitutionSafe(usedCounts, paramNames, args)) continue;
 
             const paramMap = new Map();
             paramNames.forEach((name, i) => {
@@ -346,9 +360,11 @@ export const inlineProxies = {
               if (expr && isValidProxyExpr(expr)) {
                 const paramNames = val.params.filter((p) => t.isIdentifier(p)).map((p) => p.name);
                 if (mutatesParams(expr, paramNames)) return;
+                const usedCounts = countParamUsage(expr, paramNames);
                 propMap.set(key, {
                   isLiteral: false,
                   paramNames,
+                  usedCounts,
                   expr,
                 });
               } else {
@@ -395,6 +411,7 @@ export const inlineProxies = {
               const callPath = parentPath.parentPath;
               if (!callPath?.isCallExpression() || callPath.node.callee !== parentPath.node) continue;
               const args = callPath.node.arguments;
+              if (!areArgsSubstitutionSafe(entry.usedCounts, entry.paramNames, args)) continue;
               const paramMap = new Map();
               entry.paramNames.forEach((name, i) => {
                 paramMap.set(name, args[i] ? t.cloneNode(args[i], true) : t.identifier('undefined'));

@@ -43,3 +43,9 @@ jobs:
 
       - name: Run Differential Semantic Oracle
         run: node tools/oracle.js
+
+      - name: Run Audit Regression Probes
+        run: node tools/audit-probe.js
+
+      - name: Run Obfuscation Behavior Gauntlet
+        run: node test/behavior.js

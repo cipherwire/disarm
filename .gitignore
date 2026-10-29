@@ -4,3 +4,8 @@ output/
 *.report.json
 .DS_Store
 Thumbs.db
+
+# Local test artifacts & credentials
+new-test.js
+ca.pem
+w.py

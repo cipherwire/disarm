@@ -21,9 +21,12 @@
     "disarm": "src/cli.js"
   },
   "scripts": {
-    "test": "node tools/verify.js && node tools/oracle.js",
+    "test": "node tools/verify.js && node tools/oracle.js && node tools/audit-probe.js && node test/behavior.js",
     "test:verify": "node tools/verify.js",
     "test:oracle": "node tools/oracle.js",
+    "test:probe": "node tools/audit-probe.js",
+    "test:behavior": "node test/behavior.js",
+    "fixtures": "node tools/make-fixtures.js",
     "disarm": "node src/cli.js"
   },
   "engines": {
@@ -35,5 +38,8 @@
     "@babel/parser": "^7.24.0",
     "@babel/traverse": "^7.24.0",
     "@babel/types": "^7.24.0"
+  },
+  "devDependencies": {
+    "javascript-obfuscator": "^5.9.0"
   }
 }

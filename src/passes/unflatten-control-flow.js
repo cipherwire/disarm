@@ -40,6 +40,29 @@ function resolveSequence(node) {
   return null;
 }
 
+/** True when any nested statement still breaks or continues  -  a loop exit we
+ * cannot express in linear code. Top-level trailing continue/break are
+ * stripped by the caller; anything deeper makes linearization illegal. */
+function containsNestedLoopFlow(statements) {
+  let found = false;
+  (function walk(node) {
+    if (!node || typeof node !== 'object' || found) return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item);
+      return;
+    }
+    if (node.type === 'BreakStatement' || node.type === 'ContinueStatement') {
+      found = true;
+      return;
+    }
+    for (const key of Object.keys(node)) {
+      if (key === 'loc' || key === 'leadingComments' || key === 'trailingComments') continue;
+      walk(node[key]);
+    }
+  })(statements);
+  return found;
+}
+
 /**
  * Unflatten switch-dispatch control flow loops into linear sequential statements.
  *
@@ -119,6 +142,9 @@ export const unflattenControlFlow = {
             const statements = switchCase.consequent.filter(
               (s) => !t.isContinueStatement(s) && !t.isBreakStatement(s),
             );
+            // A break/continue nested inside a case would become an illegal
+            // top-level statement after the loop is removed.
+            if (containsNestedLoopFlow(statements)) return;
             caseMap.set(caseKey, statements);
           }
         }
