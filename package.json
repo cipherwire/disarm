@@ -27,6 +27,7 @@
     "test:probe": "node tools/audit-probe.js",
     "test:behavior": "node test/behavior.js",
     "fixtures": "node tools/make-fixtures.js",
+    "profile": "node tools/profile.js",
     "disarm": "node src/cli.js"
   },
   "engines": {

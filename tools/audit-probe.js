@@ -1,5 +1,5 @@
 /**
- * Temporary audit probe  -  tests each SUSPECTED bug empirically before fixing.
+ * Temporary audit probe - tests each SUSPECTED bug empirically before fixing.
  * Every probe prints EVIDENCE (executed behavior or generated output), not theory.
  */
 import { deobfuscate } from '../src/index.js';
@@ -133,8 +133,66 @@ check('B7 inline-proxies: shorthand object property corrupted on substitution', 
   const original = run(src);
   const { code } = deobfuscate(src);
   const cleaned = run(code);
-  const shorthandBug = /\{\s*tag:\s*"t",\s*v:/.test(code) === false && code.includes('tag:');
   console.log(`        original=${JSON.stringify(original.result)} cleaned=${cleaned.ok ? JSON.stringify(cleaned.result) : 'THREW'}`);
+  return JSON.stringify(original.result) !== JSON.stringify(cleaned.result) || !cleaned.ok;
+});
+
+// B8: inline-proxies rest parameter and default parameter safety
+check('B8 inline-proxies: rest/default parameters preserved without reference errors', () => {
+  const src = `
+    function forward(fn, ...args) { return fn(...args); }
+    function add(a, b = 10) { return a + b; }
+    result = forward(add, 5);
+  `;
+  const original = run(src);
+  const { code } = deobfuscate(src);
+  const cleaned = run(code);
+  console.log(`        original=${JSON.stringify(original.result)} cleaned=${cleaned.ok ? JSON.stringify(cleaned.result) : 'THREW: ' + cleaned.error}`);
+  return JSON.stringify(original.result) !== JSON.stringify(cleaned.result) || !cleaned.ok;
+});
+
+// B9: unflatten-control-flow fallthrough preservation
+check('B9 unflatten-control-flow: switch cases with intentional fallthrough preserved', () => {
+  const src = `
+    var trace = [];
+    var state = "0";
+    while (state !== "done") {
+      switch (state) {
+        case "0":
+          trace.push("0");
+        case "1":
+          trace.push("1");
+          state = "done";
+          break;
+      }
+    }
+    result = trace.join(",");
+  `;
+  const original = run(src);
+  const { code } = deobfuscate(src);
+  const cleaned = run(code);
+  console.log(`        original=${JSON.stringify(original.result)} cleaned=${cleaned.ok ? JSON.stringify(cleaned.result) : 'THREW: ' + cleaned.error}`);
+  return JSON.stringify(original.result) !== JSON.stringify(cleaned.result) || !cleaned.ok;
+});
+
+// B10: strip-debug-traps preserves legitimate functions containing debugger traps
+check('B10 strip-debug-traps: functions containing inline debugger or trap calls preserved', () => {
+  const src = `
+    function check() { return false; }
+    function calc() {
+      var a = check() ? Function("debugger")() : 42;
+      return a;
+    }
+    function inspect() {
+      debugger;
+      return 100;
+    }
+    result = calc() + inspect();
+  `;
+  const original = run(src);
+  const { code } = deobfuscate(src);
+  const cleaned = run(code);
+  console.log(`        original=${JSON.stringify(original.result)} cleaned=${cleaned.ok ? JSON.stringify(cleaned.result) : 'THREW: ' + cleaned.error}`);
   return JSON.stringify(original.result) !== JSON.stringify(cleaned.result) || !cleaned.ok;
 });
 

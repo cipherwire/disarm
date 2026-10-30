@@ -121,7 +121,13 @@ export const foldConstants = {
           },
           UnaryExpression(path) {
             const { operator } = path.node;
-            if (operator === '-' && t.isNumericLiteral(path.node.argument)) return;
+            if (
+              operator === '-' &&
+              (t.isNumericLiteral(path.node.argument) ||
+                (t.isIdentifier(path.node.argument) && path.node.argument.name === 'Infinity'))
+            ) {
+              return;
+            }
             const operand = literalValueOf(path, path.node.argument);
             if (!operand.ok) return;
             const value = operand.value;

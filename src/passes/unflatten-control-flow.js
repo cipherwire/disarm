@@ -138,6 +138,16 @@ export const unflattenControlFlow = {
             caseKey = String(switchCase.test.value);
           }
           if (caseKey !== null) {
+            // Check whether this case terminates cleanly without falling through
+            const lastStmt = switchCase.consequent[switchCase.consequent.length - 1];
+            const terminates =
+              t.isContinueStatement(lastStmt) ||
+              t.isBreakStatement(lastStmt) ||
+              t.isReturnStatement(lastStmt) ||
+              t.isThrowStatement(lastStmt);
+            // If the case falls through to the next case, linearizing is unsafe
+            if (!terminates) return;
+
             // Strip trailing continue or break statements
             const statements = switchCase.consequent.filter(
               (s) => !t.isContinueStatement(s) && !t.isBreakStatement(s),

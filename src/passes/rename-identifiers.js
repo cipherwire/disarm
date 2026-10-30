@@ -17,11 +17,77 @@ export const renameIdentifiers = {
   description: 'Rename junk identifiers (_0x…, td_…) to readable, consistent names.',
   run(ast, report) {
     const used = new Set();
+    const declTargets = [];
+    const paramTargets = [];
+    const propKeys = new Set();
+
+    const keyOf = (node) => {
+      if (t.isMemberExpression(node)) {
+        if (!node.computed && t.isIdentifier(node.property) && JUNK_NAME_RE.test(node.property.name)) {
+          return node.property.name;
+        }
+        if (
+          node.computed &&
+          t.isStringLiteral(node.property) &&
+          t.isValidIdentifier(node.property.value) &&
+          JUNK_NAME_RE.test(node.property.value)
+        ) {
+          return node.property.value;
+        }
+        return null;
+      }
+      if (t.isObjectProperty(node) && node.shorthand) return null;
+      if (!node.computed && t.isIdentifier(node.key) && JUNK_NAME_RE.test(node.key.name)) {
+        return node.key.name;
+      }
+      if (
+        node.computed &&
+        t.isStringLiteral(node.key) &&
+        t.isValidIdentifier(node.key.value) &&
+        JUNK_NAME_RE.test(node.key.value)
+      ) {
+        return node.key.value;
+      }
+      return null;
+    };
+
+    // Single unified collection pass
     traverse(ast, {
       Identifier(path) {
         used.add(path.node.name);
       },
+      FunctionDeclaration(path) {
+        const id = path.node.id;
+        if (id && JUNK_NAME_RE.test(id.name)) {
+          declTargets.push({ type: 'fn', path, name: id.name });
+        }
+      },
+      VariableDeclarator(path) {
+        const id = path.node.id;
+        if (t.isIdentifier(id) && JUNK_NAME_RE.test(id.name)) {
+          const isFunction =
+            path.node.init &&
+            (t.isFunctionExpression(path.node.init) || t.isArrowFunctionExpression(path.node.init));
+          declTargets.push({ type: isFunction ? 'fn' : 'v', path, name: id.name });
+        }
+      },
+      'FunctionDeclaration|FunctionExpression|ArrowFunctionExpression'(path) {
+        for (const param of path.node.params) {
+          if (t.isIdentifier(param) && JUNK_NAME_RE.test(param.name)) {
+            paramTargets.push({ path, name: param.name });
+          }
+        }
+      },
+      'MemberExpression|ObjectProperty|ObjectMethod'(path) {
+        const key = keyOf(path.node);
+        if (key && !propKeys.has(key)) propKeys.add(key);
+      },
     });
+
+    // If no junk identifiers exist in the AST, exit immediately
+    if (declTargets.length === 0 && paramTargets.length === 0 && propKeys.size === 0) {
+      return;
+    }
 
     const counters = {};
     const fresh = (prefix) => {
@@ -34,70 +100,26 @@ export const renameIdentifiers = {
       return name;
     };
 
-    // 1. Declarations with scope tracking: rename binding + all references.
-    traverse(ast, {
-      FunctionDeclaration(path) {
-        const id = path.node.id;
-        if (!id || !JUNK_NAME_RE.test(id.name)) return;
-        const binding = path.scope.getBinding(id.name);
-        if (!binding) return;
-        binding.scope.rename(id.name, fresh('fn'));
-        report.count();
-      },
-      VariableDeclarator(path) {
-        const id = path.node.id;
-        if (!t.isIdentifier(id) || !JUNK_NAME_RE.test(id.name)) return;
-        const binding = path.scope.getBinding(id.name);
-        if (!binding) return;
-        const isFunction = path.node.init &&
-          (t.isFunctionExpression(path.node.init) || t.isArrowFunctionExpression(path.node.init));
-        binding.scope.rename(id.name, fresh(isFunction ? 'fn' : 'v'));
-        report.count();
-      },
-    });
-    traverse(ast, {
-      'FunctionDeclaration|FunctionExpression|ArrowFunctionExpression'(path) {
-        for (const param of path.node.params) {
-          if (!t.isIdentifier(param) || !JUNK_NAME_RE.test(param.name)) continue;
-          const binding = path.scope.getBinding(param.name);
-          if (!binding) continue;
-          binding.scope.rename(param.name, fresh('p'));
-          report.count();
-        }
-      },
-    });
+    // 1. Declarations with scope tracking
+    for (const target of declTargets) {
+      const binding = target.path.scope.getBinding(target.name);
+      if (!binding) continue;
+      binding.scope.rename(target.name, fresh(target.type));
+      report.count();
+    }
 
-    // 2. Member properties and object keys: not scope-tracked, so collect a
-    //    consistent mapping first, then apply it everywhere.
+    for (const target of paramTargets) {
+      const binding = target.path.scope.getBinding(target.name);
+      if (!binding) continue;
+      binding.scope.rename(target.name, fresh('p'));
+      report.count();
+    }
+
+    // 2. Member properties and object keys
     const propMap = new Map();
-    const keyOf = (node) => {
-      if (t.isMemberExpression(node)) {
-        if (!node.computed && t.isIdentifier(node.property) && JUNK_NAME_RE.test(node.property.name)) {
-          return node.property.name;
-        }
-        if (node.computed && t.isStringLiteral(node.property) &&
-            t.isValidIdentifier(node.property.value) && JUNK_NAME_RE.test(node.property.value)) {
-          return node.property.value;
-        }
-        return null;
-      }
-      if (t.isObjectProperty(node) && node.shorthand) return null;
-      if (!node.computed && t.isIdentifier(node.key) && JUNK_NAME_RE.test(node.key.name)) {
-        return node.key.name;
-      }
-      if (node.computed && t.isStringLiteral(node.key) &&
-          t.isValidIdentifier(node.key.value) && JUNK_NAME_RE.test(node.key.value)) {
-        return node.key.value;
-      }
-      return null;
-    };
-
-    traverse(ast, {
-      'MemberExpression|ObjectProperty|ObjectMethod'(path) {
-        const key = keyOf(path.node);
-        if (key && !propMap.has(key)) propMap.set(key, fresh('m'));
-      },
-    });
+    for (const key of propKeys) {
+      propMap.set(key, fresh('m'));
+    }
 
     if (propMap.size > 0) {
       traverse(ast, {

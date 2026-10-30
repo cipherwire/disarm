@@ -230,6 +230,8 @@ export const inlineProxies = {
         if (binding.referencePaths.length === 0) return;
 
         const paramNames = params.filter((p) => t.isIdentifier(p)).map((p) => p.name);
+        // Only inline when all parameters are simple identifiers (skip rest, destructuring, defaults)
+        if (paramNames.length !== params.length) return;
         if (mutatesParams(expr, paramNames)) return;
 
         const usedCounts = countParamUsage(expr, paramNames);
@@ -279,6 +281,8 @@ export const inlineProxies = {
           if (!expr || !isValidProxyExpr(expr)) return;
 
           const paramNames = init.params.filter((p) => t.isIdentifier(p)).map((p) => p.name);
+          // Only inline when all parameters are simple identifiers (skip rest, destructuring, defaults)
+          if (paramNames.length !== init.params.length) return;
           if (mutatesParams(expr, paramNames)) return;
 
           const usedCounts = countParamUsage(expr, paramNames);
@@ -359,6 +363,8 @@ export const inlineProxies = {
               const expr = getReturnExpr(val);
               if (expr && isValidProxyExpr(expr)) {
                 const paramNames = val.params.filter((p) => t.isIdentifier(p)).map((p) => p.name);
+                // Only inline when all parameters are simple identifiers (skip rest, destructuring, defaults)
+                if (paramNames.length !== val.params.length) return;
                 if (mutatesParams(expr, paramNames)) return;
                 const usedCounts = countParamUsage(expr, paramNames);
                 propMap.set(key, {
