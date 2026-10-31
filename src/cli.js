@@ -20,8 +20,32 @@ Options:
   --annotate      Inject explanatory comments above neutralized traps
   --no-sandbox    Disable the sandboxed string-bank harvester
   -h, --help      Show this help
+
+Note:
+  A file literally named "inspect" must be passed as ./inspect (the bare word
+  is treated as the inspection subcommand).
 `);
 }
+
+/**
+ * Print a clean, consumer-facing error and exit. Raw stacks are only shown
+ * when DEBUG is set, so failures stay diagnosable without leaking internals
+ * to end users.
+ */
+const fail = (message, error) => {
+  console.error(`error: ${message}`);
+  if (error && process.env.DEBUG) console.error(error.stack ?? error);
+  process.exit(1);
+};
+
+const readSource = () => {
+  try {
+    return isStdin ? fs.readFileSync(0, 'utf8') : fs.readFileSync(input, 'utf8');
+  } catch (error) {
+    if (error.code === 'EISDIR') fail(`cannot read input: ${input} is a directory`);
+    fail(`cannot read input: ${error.message}`, error);
+  }
+};
 
 const args = process.argv.slice(2);
 if (args.length === 0 || args.includes('-h') || args.includes('--help')) {
@@ -36,6 +60,10 @@ let sandbox = true;
 let inspectOnly = false;
 let showInspect = false;
 let annotate = false;
+
+const KNOWN_FLAGS = new Set([
+  '-h', '--help', '-o', '--output', '--report', '--inspect', '--annotate', '--no-sandbox',
+]);
 
 for (let i = 0; i < args.length; i++) {
   switch (args[i]) {
@@ -59,6 +87,12 @@ for (let i = 0; i < args.length; i++) {
       sandbox = false;
       break;
     default:
+      // A token that looks like a flag but matches nothing is almost certainly
+      // a typo: erroring beats silently treating it as a filename.
+      if (args[i].startsWith('-') && args[i] !== '-' && !KNOWN_FLAGS.has(args[i])) {
+        console.error(`error: unknown option: ${args[i]}`);
+        process.exit(1);
+      }
       positional.push(args[i]);
   }
 }
@@ -77,9 +111,16 @@ if (!isStdin && !fs.existsSync(input)) {
 }
 
 if (inspectOnly) {
-  const source = isStdin ? fs.readFileSync(0, 'utf8') : fs.readFileSync(input, 'utf8');
-  const result = inspectTelemetry(source);
-  console.log(formatInspectionReport(result));
+  const source = readSource();
+  let inspection;
+  try {
+    inspection = inspectTelemetry(source);
+  } catch (error) {
+    if (error instanceof SyntaxError) fail(`parse error in ${isStdin ? 'stdin' : input}: ${error.message}`, error);
+    if (error instanceof RangeError) fail(`cannot inspect ${isStdin ? 'stdin' : input}: input is too deeply nested or too complex`, error);
+    fail(`inspection failed: ${error.message}`, error);
+  }
+  console.log(formatInspectionReport(inspection));
   process.exit(0);
 }
 
@@ -121,13 +162,21 @@ const onProgress = (current, total, passName) => {
   );
 };
 
-const source = isStdin ? fs.readFileSync(0, 'utf8') : fs.readFileSync(input, 'utf8');
+const source = readSource();
 
 if (showProgress) {
   process.stderr.write(`${colors.dim('[disarm]')} running deobfuscation pipeline...\n`);
 }
 
-const { code, report } = deobfuscate(source, { sandbox, annotate, onProgress });
+let deobfuscation;
+try {
+  deobfuscation = deobfuscate(source, { sandbox, annotate, onProgress });
+} catch (error) {
+  if (error instanceof SyntaxError) fail(`parse error in ${isStdin ? 'stdin' : input}: ${error.message}`, error);
+  if (error instanceof RangeError) fail(`cannot process ${isStdin ? 'stdin' : input}: input is too deeply nested or too complex`, error);
+  fail(`deobfuscation failed: ${error.message}`, error);
+}
+const { code, report } = deobfuscation;
 
 if (showProgress) {
   process.stderr.write('\r\x1b[2K\r');
@@ -136,8 +185,12 @@ if (showProgress) {
 if (isStdin && !output) {
   process.stdout.write(code + '\n');
   if (reportPath) {
-    fs.mkdirSync(path.dirname(reportPath), { recursive: true });
-    fs.writeFileSync(reportPath, JSON.stringify(report.toJSON(), null, 2), 'utf8');
+    try {
+      fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+      fs.writeFileSync(reportPath, JSON.stringify(report.toJSON(), null, 2), 'utf8');
+    } catch (error) {
+      fail(`cannot write report: ${error.message}`, error);
+    }
   }
   process.exit(0);
 }
@@ -148,11 +201,14 @@ const defaultOutputDir = 'output';
 output ??= path.join(defaultOutputDir, `${baseName}.clean.js`);
 reportPath ??= path.join(defaultOutputDir, `${baseName}.report.json`);
 
-fs.mkdirSync(path.dirname(output), { recursive: true });
-fs.mkdirSync(path.dirname(reportPath), { recursive: true });
-
-fs.writeFileSync(output, code, 'utf8');
-fs.writeFileSync(reportPath, JSON.stringify(report.toJSON(), null, 2), 'utf8');
+try {
+  fs.mkdirSync(path.dirname(output), { recursive: true });
+  fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+  fs.writeFileSync(output, code, 'utf8');
+  fs.writeFileSync(reportPath, JSON.stringify(report.toJSON(), null, 2), 'utf8');
+} catch (error) {
+  fail(`cannot write output: ${error.message}`, error);
+}
 
 console.log(`${colors.dim('input    ')} ${colors.white(input)}`);
 console.log(`${colors.dim('output   ')} ${colors.green(output)}`);

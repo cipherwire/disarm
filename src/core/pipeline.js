@@ -11,9 +11,18 @@ const traverse = traverseModule.default ?? traverseModule;
  */
 export function runPasses(ast, passes, report = new Report(), context = { options: {} }) {
   const total = passes.length;
+  // Progress reporting is diagnostics only: a missing OR faulty callback
+  // must never abort a deobfuscation run.
+  const onProgress = typeof context?.onProgress === 'function' ? context.onProgress : null;
   for (let i = 0; i < total; i++) {
     const pass = passes[i];
-    context?.onProgress?.(i + 1, total, pass.name);
+    if (onProgress) {
+      try {
+        onProgress(i + 1, total, pass.name);
+      } catch {
+        // consumer callback failure is not a pipeline failure
+      }
+    }
     traverse.cache?.clearScope?.();
     report.startPass(pass.name, pass.description ?? '');
     try {
