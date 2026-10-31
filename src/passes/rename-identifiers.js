@@ -6,6 +6,11 @@ const traverse = traverseModule.default ?? traverseModule;
 
 const RESERVED = new Set(['undefined', 'NaN', 'Infinity']);
 
+/** Source-level superset of JUNK_NAME_RE: if none of these substrings exist
+ * in the raw source, no identifier can match JUNK_NAME_RE either, and the
+ * full AST scan can be skipped. Over-approximation is the safe direction. */
+const JUNK_SOURCE_RE = /_0x[0-9a-fA-F]{2,}|td_[A-Za-z0-9]{1,5}/;
+
 /**
  * Rename obfuscator-generated junk (`_0x4f2a`, `td_Ab3`) into readable,
  * consistent names. Two layers:
@@ -15,7 +20,18 @@ const RESERVED = new Set(['undefined', 'NaN', 'Infinity']);
 export const renameIdentifiers = {
   name: 'rename-identifiers',
   description: 'Rename junk identifiers (_0x…, td_…) to readable, consistent names.',
-  run(ast, report) {
+  run(ast, report, context) {
+    // Cheap source-level pre-filter: a bundle with no junk-name patterns
+    // anywhere in its raw text cannot yield a single rename, and the full
+    // unified scan is the pass's entire cost on large inputs. A false
+    // match simply falls back to the full scan (worst case equals today).
+    // Limitation: identifiers written with unicode escapes defeat the text
+    // check; that only costs renames, never behavior.
+    if (typeof context?.source === 'string' && !JUNK_SOURCE_RE.test(context.source)) {
+      report.note('no junk-name patterns in source; rename scan skipped');
+      return;
+    }
+
     const used = new Set();
     const declTargets = [];
     const paramTargets = [];

@@ -50,7 +50,10 @@ export const defaultPasses = [
   unflattenControlFlow,
   unwrapLogicalGuards,
   unwrapTernaries,
-  fuseLiterals,
+  // The 2nd fuse-literals was removed: the fold-constants right after performs
+  // the identical folds (its PURE_BINARY includes string '+'), with byte-identical
+  // output proven by audit/bench-opt.mjs OPT-4. The 1st fuse-literals (position 4)
+  // stays: it feeds the string-bank detector.
   foldConstants,
   propagateConstants,
   normalizeConditions,

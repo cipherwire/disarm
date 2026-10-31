@@ -23,7 +23,7 @@ export function deobfuscate(code, options = {}) {
   const report = new Report();
 
   const initialMetrics = telemetry ? measureComplexity(ast) : null;
-  runPasses(ast, passes, report, { options: rest, onProgress });
+  runPasses(ast, passes, report, { options: rest, onProgress, source: code });
 
   if (telemetry && initialMetrics) {
     const finalMetrics = measureComplexity(ast);
