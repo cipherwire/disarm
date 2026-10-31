@@ -9,3 +9,6 @@ Thumbs.db
 new-test.js
 ca.pem
 w.py
+
+# Local QA/audit tooling
+audit/
